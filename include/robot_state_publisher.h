@@ -17,9 +17,11 @@ using namespace ros;
 namespace Mantra {
 class RTPublisher {
 public:
-    explicit RTPublisher(MotorDriver& driver) : driver_(driver), joint_pub_(
-            nh_.advertise<sensor_msgs::JointState>("joint_states", 1)) {
+    explicit RTPublisher(MotorDriver& driver, const string& topic_name) : driver_(driver), joint_pub_(
+            nh_.advertise<sensor_msgs::JointState>(topic_name, 1)) {
     }
+
+    bool publish();
 
 private:
     NodeHandle nh_;
@@ -30,9 +32,6 @@ private:
     bool publishJoints(Time &t);
 
     bool publishTool(Time &t);
-
-    bool publish();
-
 };
 
 }

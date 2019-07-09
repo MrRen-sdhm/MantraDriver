@@ -44,7 +44,7 @@ private:
 
     TrajectoryFollower &follower_;
 
-    std::array<double, MotorDriver::motor_cnt_> curr_pos_, curr_vel_;
+    std::array<double, MotorDriver::motor_cnt_> curr_pos_{}, curr_vel_{};
 
     void onGoal(GoalHandle gh);
 
@@ -62,14 +62,14 @@ private:
 
     void interruptGoal(GoalHandle &gh);
 
-    std::vector<size_t> reorderMap(std::vector<std::string> goal_joints);
+    std::vector<size_t> reorderMap(const std::vector<std::string>& goal_joints);
 
     void trajectoryThread();
 
     bool getCurrState();
 
 public:
-    ActionServer(TrajectoryFollower &follower, MotorDriver& driver, double max_velocity);
+    ActionServer(TrajectoryFollower &follower, MotorDriver& driver, string action_ns, double max_velocity);
 
     void start();
     MotorDriver& driver_;

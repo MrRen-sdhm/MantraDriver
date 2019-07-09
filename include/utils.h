@@ -8,7 +8,7 @@
 
 template<typename T, typename U>
 constexpr size_t offsetOf(U T::*member) {
-    return (char *) &((T *) nullptr->*member) - (char *) nullptr;
+    return (uint16_t *) &((T *) nullptr->*member) - (uint16_t *) nullptr;
 }
 
 

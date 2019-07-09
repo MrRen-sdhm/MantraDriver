@@ -202,7 +202,7 @@ void ModbusAdapter::modbusReadData(int slave, int functionCode, int startAddress
 
 int ModbusAdapter::modbusReadHoldReg(int slave, int startAddress, int noOfItems, uint16_t* data)
 {
-    cout <<  "Modbus Read Data\n";
+    if (DEBUG) cout <<  "Modbus Read Data\n";
 
     if(m_modbus == nullptr) return -2;
 
@@ -213,7 +213,7 @@ int ModbusAdapter::modbusReadHoldReg(int slave, int startAddress, int noOfItems,
 
     ret = modbus_read_registers(m_modbus, startAddress, noOfItems, data);
 
-    cout <<  "Modbus Read Data return value = " << ret << ", errno = " << errno << endl;
+    if (DEBUG) cout <<  "Modbus Read Data return value = " << ret << ", errno = " << errno << endl;
 
     //update data model
     if(ret == noOfItems)
@@ -240,10 +240,10 @@ int ModbusAdapter::modbusReadHoldReg(int slave, int startAddress, int noOfItems,
 }
 
 // 1:success -1:fail -2:m_modbus == nullptr
-int ModbusAdapter::modbusWriteData(int slave, int functionCode, int startAddress, int noOfItems, uint16_t* value)
+int ModbusAdapter::modbusWriteData(int slave, int functionCode, int startAddress, int noOfItems, const uint16_t* value)
 {
 
-    cout <<  "Modbus Write Data\n";
+    if (DEBUG) cout <<  "Modbus Write Data\n";
 
     if(m_modbus == nullptr) return -2;
 
@@ -290,13 +290,13 @@ int ModbusAdapter::modbusWriteData(int slave, int functionCode, int startAddress
             break;
     }
 
-    cout <<  "Modbus Write Data return value = " << ret << ", errno = " << errno << endl;
+    if (DEBUG) cout <<  "Modbus Write Data return value = " << ret << ", errno = " << errno << endl;
 
     // debug messages
     if(ret == noOfItems)
     {
         //values written correctly
-        printf("Value written correctly.\n");
+        if (DEBUG) printf("Value written correctly.\n");
         return 1;
     }
     else

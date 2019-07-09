@@ -10,7 +10,7 @@
 namespace Mantra {
 
 TrajectoryFollower::TrajectoryFollower(MotorDriver& motorDriver)
-        : running_(false), motorDriver_(motorDriver){
+        : running_(false), motorDriver_(motorDriver), servoj_time_(0.001){
 
 }
 
@@ -23,21 +23,23 @@ bool TrajectoryFollower::start() {
 }
 
 bool TrajectoryFollower::execute(std::array<double, joint_cnt_> &positions) {
-    if (!running_)
+    if (!running_) {
+        cout << "!running\n" << endl;
         return false;
+    }
 
-    //  ROS_INFO("servoj([%f,%f,%f,%f,%f,%f,%f])", positions[0], positions[1], positions[2], positions[3], positions[4],
-    //  positions[5], positions[6]);
+    ROS_INFO("servoj([%f,%f,%f,%f,%f,%f,%f])", positions[0], positions[1], positions[2], positions[3], positions[4],
+    positions[5], positions[6]);
 
     last_positions_ = positions;
-
-    // TODO：数据类型转换
-
     // TODO：通过modbus发送数据 NOTE:还需考虑读取和发送冲突问题, 此时处于trajectoryThread中
-    // 这里只写到Mantra虚拟寄存器中, 由其他部分负责发送
+    // 这里只写到Mantra虚拟寄存器中, 由其他部分负责发送 FIXME：这样实时性可能无法保证
     for (uint8_t id = 1; id < joint_cnt_; id++) {
-        motorDriver_.set_position(id, positions[id-1]);
+        bool ret = motorDriver_.set_position(id, positions[id-1]);
+        if (!ret) return false;
     }
+
+    return true;
 }
 
 // 轨迹插补
@@ -58,7 +60,6 @@ bool TrajectoryFollower::execute(std::vector<TrajectoryPoint> &trajectory, std::
 
     using namespace std::chrono;
     typedef duration<double> double_seconds;
-    typedef high_resolution_clock Clock;
     typedef Clock::time_point Time;
 
     auto &last = trajectory[trajectory.size() - 1]; // 轨迹数组末尾
@@ -98,10 +99,12 @@ bool TrajectoryFollower::execute(std::vector<TrajectoryPoint> &trajectory, std::
                                     point.velocities[j]);
             }
 
-            if (!execute(positions))
+            if (!execute(positions)) {
                 return false;
+            }
 
-//      std::this_thread::sleep_for(std::chrono::milliseconds((int)((servoj_time_ * 1000) / 4.)));
+            // TODO: 线程休眠
+//            std::this_thread::sleep_for(std::chrono::milliseconds((int)((servoj_time_ * 1000) / 4.)));
         }
 
         prev = point;

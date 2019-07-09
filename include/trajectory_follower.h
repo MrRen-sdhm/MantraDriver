@@ -38,10 +38,11 @@ private:
     MotorDriver& motorDriver_;
     std::atomic<bool> running_;
     std::array<double, joint_cnt_> last_positions_;
+    double servoj_time_;
 
     bool execute(std::array<double,joint_cnt_> &positions);
 
-    double interpolate(double t, double T, double p0_pos, double p1_pos, double p0_vel, double p1_vel);
+    static double interpolate(double t, double T, double p0_pos, double p1_pos, double p0_vel, double p1_vel);
 
 public:
     TrajectoryFollower(MotorDriver &motorDriver);

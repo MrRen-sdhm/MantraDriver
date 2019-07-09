@@ -1,3 +1,5 @@
+#include <utility>
+
 //
 // Created by sdhm on 7/7/19.
 //
@@ -5,11 +7,12 @@
 #include "action_server.h"
 
 namespace Mantra {
-ActionServer::ActionServer(TrajectoryFollower &follower, MotorDriver& driver, double max_velocity)
-        : as_(nh_, "follow_joint_trajectory", boost::bind(&ActionServer::onGoal, this, _1),
+ActionServer::ActionServer(TrajectoryFollower &follower, MotorDriver& driver, string action_ns, double max_velocity)
+        : as_(nh_, std::move(action_ns), boost::bind(&ActionServer::onGoal, this, _1),
               boost::bind(&ActionServer::onCancel, this, _1), false), driver_(driver), max_velocity_(max_velocity),
           interrupt_traj_(false), has_goal_(false), running_(false), follower_(follower) {
-    joint_names_ = driver.joint_names();
+    joint_names_ = driver_.joint_names_;
+    std::copy(joint_names_.begin(), joint_names_.end(), std::inserter(joint_set_, joint_set_.end()));
 }
 
 // 开启Action服务, 并开启轨迹线程
@@ -137,7 +140,7 @@ bool ActionServer::validateTrajectory(GoalHandle &gh, Result &res) {
     res.error_code = Result::INVALID_GOAL;
 
     // must at least have one point
-    if (goal->trajectory.points.size() < 1)
+    if (goal->trajectory.points.empty())
         return false;
 
     for (auto const &point : goal->trajectory.points) {
@@ -204,8 +207,8 @@ bool ActionServer::try_execute(GoalHandle &gh, Result &res) {
     return true;
 }
 
-std::vector<size_t> ActionServer::reorderMap(std::vector<std::string> goal_joints) {
-    std::vector<size_t> indecies;
+std::vector<size_t> ActionServer::reorderMap(const std::vector<std::string>& goal_joints) {
+    std::vector<size_t> indices;
     for (auto const &aj : joint_names_) {
         size_t j = 0;
         for (auto const &gj : goal_joints) {
@@ -213,9 +216,9 @@ std::vector<size_t> ActionServer::reorderMap(std::vector<std::string> goal_joint
                 break;
             j++;
         }
-        indecies.push_back(j);
+        indices.push_back(j);
     }
-    return indecies;
+    return indices;
 }
 
 // 轨迹线程

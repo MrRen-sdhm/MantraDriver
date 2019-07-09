@@ -9,7 +9,7 @@ bool RTPublisher::publishJoints(Time &t) {
     sensor_msgs::JointState joint_msg;
     joint_msg.header.stamp = t;
 
-    joint_msg.name.assign(driver_.joint_names().begin(), driver_.joint_names().end());
+    joint_msg.name.assign(driver_.joint_names_.begin(), driver_.joint_names_.end());
     joint_msg.position.assign(driver_.curr_pos.begin(), driver_.curr_pos.end());
     joint_msg.velocity.assign(driver_.curr_vel.begin(), driver_.curr_vel.end());
     joint_msg.effort.assign(driver_.curr_eff.begin(), driver_.curr_eff.end());

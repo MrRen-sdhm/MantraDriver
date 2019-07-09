@@ -14,6 +14,7 @@
 #include "modbus.h"
 
 //#define LIB_MODBUS_DEBUG_OUTPUT
+#define DEBUG 0
 
 using namespace std;
 
@@ -30,7 +31,7 @@ public:
     void modbusReadData(int slave, int functionCode, int startAddress, int noOfItems);
     int modbusReadHoldReg(int slave, int startAddress, int noOfItems, uint16_t* data);
 
-    int modbusWriteData(int slave, int functionCode, int startAddress, int noOfItems, uint16_t *value);
+    int modbusWriteData(int slave, int functionCode, int startAddress, int noOfItems, const uint16_t *value);
 
     bool isConnected();
 
