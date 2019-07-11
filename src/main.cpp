@@ -16,16 +16,18 @@ int main(int argc, char*argv[]){
     size_t uint8_size = sizeof(uint8_t);
     size_t uint16_size = sizeof(uint16_t);
     size_t uint32_size = sizeof(uint32_t);
+    size_t int16_size = sizeof(int16_t);
+    size_t int32_size = sizeof(int32_t);
 
     double max_velocity = 1;
 
     ActionServer *action_server(nullptr); // Action服务器
     TrajectoryFollower *traj_follower; // 关节轨迹跟随器
 
-    MotorDriver *motorDriver = new MotorDriver("127.0.0.1", 1503, 1, "left_joint"); // 机械臂驱动
-    RTPublisher rt_pub(*motorDriver, "joint_states_test"); // 关节状态发布器
+    MotorDriver *motorDriver = new MotorDriver("127.0.0.1", 1502, 1, "joint"); // 机械臂驱动
+    RTPublisher rt_pub(*motorDriver, "joint_states"); // 关节状态发布器
     traj_follower = new TrajectoryFollower(*motorDriver); // 关节轨迹跟随器
-    action_server = new ActionServer(*traj_follower, *motorDriver, "arm/left/follow_joint_trajectory", max_velocity); // Action服务器
+    action_server = new ActionServer(*traj_follower, *motorDriver, "mantra/follow_joint_trajectory", max_velocity); // Action服务器
 
     TimePoint current_ns = Clock::now();
     uint32_t dur_time;
@@ -40,7 +42,7 @@ int main(int argc, char*argv[]){
             // 开启Action服务器
             action_server->start();
             // 发布关节状态
-            rt_pub.publish();
+//            rt_pub.publish();
             // ROS spin
             ros::spinOnce();
         }

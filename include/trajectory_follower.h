@@ -15,7 +15,6 @@
 
 #include "motor_driver.h"
 
-//#include "action_trajectory_follower_interface.h"
 
 namespace Mantra {
 struct TrajectoryPoint {

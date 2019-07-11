@@ -12,7 +12,7 @@ ActionServer::ActionServer(TrajectoryFollower &follower, MotorDriver& driver, st
               boost::bind(&ActionServer::onCancel, this, _1), false), driver_(driver), max_velocity_(max_velocity),
           interrupt_traj_(false), has_goal_(false), running_(false), follower_(follower) {
     joint_names_ = driver_.joint_names_;
-    std::copy(joint_names_.begin(), joint_names_.end(), std::inserter(joint_set_, joint_set_.end()));
+    std::copy(joint_names_.begin(), joint_names_.end(), std::inserter(joint_set_, joint_set_.end())); // joint_set初始化
 }
 
 // 开启Action服务, 并开启轨迹线程
