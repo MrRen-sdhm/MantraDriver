@@ -15,7 +15,6 @@
 
 #include "motor_driver.h"
 
-
 namespace Mantra {
 struct TrajectoryPoint {
     std::array<double, Mantra::MotorDriver::motor_cnt_> positions;
@@ -38,6 +37,8 @@ private:
     std::atomic<bool> running_;
     std::array<double, joint_cnt_> last_positions_;
     double servoj_time_;
+
+    uint64_t excute_cnt_ = 0;
 
     bool execute(std::array<double,joint_cnt_> &positions);
 

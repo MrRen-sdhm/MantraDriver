@@ -16,6 +16,8 @@
 #include <array>
 #include <memory>
 
+#include <ros/ros.h>
+
 #include "utils.h"
 #include "modbusadapter.h"
 
@@ -249,7 +251,12 @@ namespace Mantra {
 class MotorDriver {
 public:
     static const uint8_t motor_cnt_ = 7; // 电机数
+    const int timer_span_ = 10; // 通信频率 HZ
     std::vector<std::string> joint_names_{}; // 关节名称
+
+    /// 定时器相关参数
+    ros::Timer timer_;
+    ros::NodeHandle nh_;
 
     /// 关节位置相关参数
     std::array<double, motor_cnt_> curr_pos{}; // 读取位置数据的缓冲区
@@ -259,22 +266,18 @@ public:
     MotorDriver(string ip, int port, int slaver, const string& joint_prefix); // 构造函数
 
     /// 外部接口
-    // 数据通信
-    void spin_once();
-    // 设置关节位置
+    // 启动通信定时器
+    void start();
+    // 数据通信回调
+    void comm_callback(const ros::TimerEvent& e);
+    // 设置虚拟寄存器中关节位置
     bool set_position(uint8_t id, double rad) {
         return device_.set_goal_position(id, rad);
     }
+    bool do_write_operation(); // 写控制器寄存器
+    bool do_read_operation();  // 读控制器寄存器
 
 private:
-    /// 总状态
-    enum class State {
-        WAIT,               // 定时1ms
-        WRITE,              // 写入设定位置
-        READ,               // 读取关节位置
-        REQUEST,            // 请求读取当前位置
-    };
-
     /// modbus相关参数
     ModbusAdapter *m_master_; // modbus服务器
     int slaver_; // modbus客户端id
@@ -286,8 +289,6 @@ private:
     size_t reg_size_ = sizeof(typename MantraDevice::Register); // MantraDevice::Register尺寸
     size_t ctrller_reg_len_ = reg_size_/2; // 控制器寄存器数量, 即uint16_t数据量
 
-    volatile State state_ = State::WAIT; // 当前总状态
-
     // modbus读保持寄存器数据, 使用uint16_t类型写入虚拟寄存器, 使用数据时将虚拟寄存器数据转换为int16或int32类型即可
     int _read_data(int addr, int len, uint16_t* data) {
         int rect = m_master_->modbusReadHoldReg(slaver_, addr, len, data);
@@ -297,53 +298,6 @@ private:
     // modbus写保持寄存器数据, 使用uint16_t类型写入, int16或int32类型数据需转换为uint16类型
     int _write_data(int addr, int len, const uint16_t* data) {
         return m_master_->modbusWriteData(slaver_, MODBUS_FC_WRITE_MULTIPLE_REGISTERS, addr, len, data);
-    }
-
-    // 执行读操作
-    int _do_read_operation() {
-        // 读关节位置
-        for (int id = 1; id <= motor_cnt_; id++) {
-            uint32_t offset = MantraDevice::offset_curr_position(id); // 控制器寄存器位置偏移
-
-            // 从控制器读取当前位置, 写入Mantra寄存器, 在控制器寄存器中长度为2单字, 占两个数据位, 即2*uint16_t
-//            printf("[INFO] offset: %d addr: %d\n", offset, hmi_addr_head_ + offset);
-            _read_data(hmi_addr_head_ + offset, 2, (uint16_t *)device_.curr_pos_ptr(id));
-            curr_pos[id-1] = device_.get_curr_position(id); // 当前位置保存到位置缓冲区
-        }
-        // 读关节速度
-        for (int id = 1; id <= motor_cnt_; id++) {
-            uint32_t offset = MantraDevice::offset_curr_velocity(id); // 控制器寄存器位置偏移
-
-            // 从控制器读取当前速度, 写入Mantra寄存器, 在控制器寄存器中长度为2单字, 占两个数据位, 即2*uint16_t
-            _read_data(hmi_addr_head_ + offset, 2, (uint16_t *)device_.curr_vel_ptr(id));
-            curr_vel[id-1] = device_.get_curr_velocity(id); // 当前位置保存到位置缓冲区
-        }
-        // 读关节力矩
-        for (int id = 1; id <= motor_cnt_; id++) {
-            uint32_t offset = MantraDevice::offset_curr_effort(id); // 控制器寄存器位置偏移
-
-            // 从控制器读取当前力矩, 写入Mantra寄存器, 在控制器寄存器中长度为2单字, 占两个数据位, 即2*uint16_t
-            _read_data(hmi_addr_head_ + offset, 2, (uint16_t *)device_.curr_eff_ptr(id));
-            curr_eff[id-1] = device_.get_curr_effort(id); // 当前位置保存到位置缓冲区
-        }
-
-//        // FIXME: 调试用, 读取目标位置
-//        for (int id = 1; id <= motor_cnt_; id++) {
-//            uint32_t offset = MantraDevice::offset_goal_position(id); // 控制器寄存器位置偏移
-//            _read_data(hmi_addr_head_ + offset, 2, (uint16_t *)device_.goal_pos_ptr(id));
-//        }
-        return 1;
-    }
-
-    // 执行写操作
-    int _do_write_operation() {
-        // 写关节位置
-        for (int i = 1; i < motor_cnt_; i++) {
-            int offset = MantraDevice::offset_goal_position(i); // 控制器寄存器位置偏移
-            // 从Mantra寄存器获取目标关节角, 写入控制器寄存器, 在控制器寄存器中长度为2单字, 占两个数据位, 即2*uint16_t
-            _write_data(hmi_addr_head_ + offset, 2, (uint16_t *)device_.goal_pos_ptr(i)); // 写目标位置到控制器
-        }
-        return 1;
     }
 
     // 使能所有关节 写40002的高八位, 第9位控制所有关节

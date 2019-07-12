@@ -10,7 +10,7 @@
 namespace Mantra {
 
 TrajectoryFollower::TrajectoryFollower(MotorDriver& motorDriver)
-        : running_(false), motorDriver_(motorDriver), servoj_time_(0.001){
+        : running_(false), motorDriver_(motorDriver), servoj_time_(0.008){
 
 }
 
@@ -28,17 +28,19 @@ bool TrajectoryFollower::execute(std::array<double, joint_cnt_> &positions) {
         return false;
     }
 
-    ROS_INFO("servoj([%f,%f,%f,%f,%f,%f,%f])", positions[0], positions[1], positions[2], positions[3], positions[4],
-    positions[5], positions[6]);
+    ROS_INFO("servoj[%lu]([%f,%f,%f,%f,%f,%f,%f])", excute_cnt_++, positions[0], positions[1], positions[2],
+            positions[3], positions[4], positions[5], positions[6]);
 
     last_positions_ = positions;
-    // TODO：通过modbus发送数据 NOTE:还需考虑读取和发送冲突问题, 此时处于trajectoryThread中
-    // 这里只写到Mantra虚拟寄存器中, 由其他部分负责发送 FIXME：这样实时性可能无法保证
+
+    /// 写目标位置到 Mantra 虚拟寄存器中
     for (uint8_t id = 1; id < joint_cnt_; id++) {
         bool ret = motorDriver_.set_position(id, positions[id-1]);
         if (!ret) return false;
     }
 
+    // FIXME: 此处出现读写冲突！！！
+    return motorDriver_.do_write_operation(); /// 写目标位置到实际控制器
     return true;
 }
 
@@ -94,8 +96,8 @@ bool TrajectoryFollower::execute(std::vector<TrajectoryPoint> &trajectory, std::
 
             double elapsed_s = duration_cast<double_seconds>(elapsed - prev.time_from_start).count();
             for (size_t j = 0; j < positions.size(); j++) {
-                positions[j] = // 上一轨迹点与当前点插补
-                        interpolate(elapsed_s, d_s, prev.positions[j], point.positions[j], prev.velocities[j],
+                /// 轨迹插补
+                positions[j] = interpolate(elapsed_s, d_s, prev.positions[j], point.positions[j], prev.velocities[j],
                                     point.velocities[j]);
             }
 
@@ -103,8 +105,8 @@ bool TrajectoryFollower::execute(std::vector<TrajectoryPoint> &trajectory, std::
                 return false;
             }
 
-            // TODO: 线程休眠
-//            std::this_thread::sleep_for(std::chrono::milliseconds((int)((servoj_time_ * 1000) / 4.)));
+            /// 线程休眠, 控制插补数量
+            std::this_thread::sleep_for(std::chrono::milliseconds((int)((servoj_time_ * 1000) / 4.)));
         }
 
         prev = point;

@@ -12,6 +12,7 @@ using namespace Mantra;
 int main(int argc, char*argv[]){
 
     ros::init(argc, argv, "mantra_driver"); // ROS初始化
+    ros::NodeHandle nh; // 节点句柄
 
     size_t uint8_size = sizeof(uint8_t);
     size_t uint16_size = sizeof(uint16_t);
@@ -24,31 +25,26 @@ int main(int argc, char*argv[]){
     ActionServer *action_server(nullptr); // Action服务器
     TrajectoryFollower *traj_follower; // 关节轨迹跟随器
 
-    MotorDriver *motorDriver = new MotorDriver("127.0.0.1", 1502, 1, "joint"); // 机械臂驱动
+    MotorDriver *motorDriver = new MotorDriver("127.0.0.1", 1503, 1, "joint"); // 机械臂驱动
     RTPublisher rt_pub(*motorDriver, "joint_states"); // 关节状态发布器
     traj_follower = new TrajectoryFollower(*motorDriver); // 关节轨迹跟随器
     action_server = new ActionServer(*traj_follower, *motorDriver, "mantra/follow_joint_trajectory", max_velocity); // Action服务器
 
-    TimePoint current_ns = Clock::now();
-    uint32_t dur_time;
-    for (;;) {
-        dur_time = duration_cast<microseconds>(Clock::now() - current_ns).count();
-        if (dur_time > 1000000) { // 0.1s
-            current_ns = Clock::now();
-            cout << "[INFO] time: " << dur_time << endl;
+    // 启动通信定时器
+    motorDriver->start();
+    // 开启Action服务器
+    action_server->start();
 
-            // 与驱动器通信
-            motorDriver->spin_once();
-            // 开启Action服务器
-            action_server->start();
-            // 发布关节状态
-//            rt_pub.publish();
-            // ROS spin
-            ros::spinOnce();
-        }
+    ros::Rate loop_rate(100); // 100HZ
+    while(ros::ok())
+    {
+        // 发布关节状态
+//        rt_pub.publish();
+
+        loop_rate.sleep();
+        ros::spinOnce();
     }
-
-    ros::spin();
+    ROS_WARN("Exiting mantra_driver...");
 
     return 0;
 }

@@ -19,6 +19,7 @@
 #include "motor_driver.h"
 #include "trajectory_follower.h"
 
+using namespace ros;
 
 namespace Mantra {
 class ActionServer {
@@ -28,7 +29,7 @@ private:
     typedef actionlib::ServerGoalHandle<Action> GoalHandle;
     typedef actionlib::ActionServer<Action> Server;
 
-    ros::NodeHandle nh_;
+    NodeHandle nh_;
     Server as_;
 
     std::vector<std::string> joint_names_;

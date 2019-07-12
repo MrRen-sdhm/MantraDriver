@@ -53,7 +53,7 @@ void ActionServer::onRobotStateChange() {
     curr_gh_.setAborted(res, res.error_string);
 }
 
-// 更新机械臂状态数据 NOTE：用于获取当前位置和速度, 作为轨迹起始点
+// 更新机械臂状态数据
 bool ActionServer::getCurrState() {
     curr_pos_ = driver_.curr_pos;
     curr_vel_ = driver_.curr_vel;
@@ -68,7 +68,7 @@ void ActionServer::onGoal(GoalHandle gh) {
     ROS_INFO("Received new goal");
 
     if (!validate(gh, res) || !try_execute(gh, res)) {
-        ROS_WARN("Goal error: %s", res.error_string.c_str());
+        ROS_ERROR("Goal error: %s", res.error_string.c_str());
         gh.setRejected(res, res.error_string);
     }
 }
@@ -112,6 +112,7 @@ bool ActionServer::validateState(GoalHandle &gh, Result &res) {
 //            res.error_string = "Undefined state";
 //            return false;
 //    }
+        return true;
 }
 
 // 检查可用关节
@@ -236,27 +237,25 @@ void ActionServer::trajectoryThread() {
         curr_gh_.setAccepted();
 
         auto goal = curr_gh_.getGoal(); // 获取轨迹
-        std::vector<TrajectoryPoint> trajectory; // 轨迹
+        std::vector<TrajectoryPoint> trajectory; /// 待处理轨迹列表
         trajectory.reserve(goal->trajectory.points.size() + 1); // 申请空间
 
-        // joint names of the goal might have a different ordering compared
-        // to what URScript expects so need to map between the two
+        // moveit发送的 joint_names 可能没有顺序, 重新排序
         auto mapping = reorderMap(goal->trajectory.joint_names);
 
         ROS_INFO("Translating trajectory");
 
-        auto const &fp = goal->trajectory.points[0];
-        auto fpt = convert(fp.time_from_start);
+        auto const &fp = goal->trajectory.points[0]; // 第一个轨迹点
+        auto fpt = convert(fp.time_from_start); // 转换为微秒
 
         // make sure we have a proper t0 position
-        if (fpt > std::chrono::microseconds(0)) {
+        if (fpt > std::chrono::microseconds(0)) { // 保证有合适的起始轨迹点
             ROS_INFO("Trajectory without t0 recieved, inserting t0 at currrent position");
-            // NOTE：此处获取机械臂当前位置, 作为初始点
-            getCurrState(); // 获取当前位置及速度
+            getCurrState(); // 获取当前位置及速度, 作为起始轨迹点
             trajectory.emplace_back(TrajectoryPoint(curr_pos_, curr_vel_, std::chrono::microseconds(0)));
         }
 
-        for (auto const &point : goal->trajectory.points) {
+        for (auto const &point : goal->trajectory.points) { /// 处理从moveit接收到的轨迹
             std::array<double, MotorDriver::motor_cnt_> pos{}, vel{};
             for (size_t i = 0; i < MotorDriver::motor_cnt_; i++) {
                 size_t idx = mapping[i];
@@ -264,10 +263,10 @@ void ActionServer::trajectoryThread() {
                 vel[idx] = point.velocities[i];
             }
             auto t = convert(point.time_from_start);
-            trajectory.emplace_back(TrajectoryPoint(pos, vel, t)); // 存储轨迹点
+            trajectory.emplace_back(TrajectoryPoint(pos, vel, t)); /// moveit生成的轨迹点存入轨迹列表
         }
 
-        double t = std::chrono::duration_cast<std::chrono::duration<double>>(
+        double t = std::chrono::duration_cast<std::chrono::duration<double>>( // 末尾轨迹点对应时间
                         trajectory[trajectory.size() - 1].time_from_start).count();
         ROS_INFO("Executing trajectory with %zu points and duration of %4.3fs", trajectory.size(), t);
 
@@ -276,7 +275,7 @@ void ActionServer::trajectoryThread() {
         ROS_INFO("Attempting to start follower %p", &follower_);
         // 开启轨迹跟踪
         if (follower_.start()) { // 启动轨迹跟踪, 此处running_置true
-            if (follower_.execute(trajectory, interrupt_traj_)) { // 执行轨迹
+            if (follower_.execute(trajectory, interrupt_traj_)) { /// 执行轨迹列表中的轨迹
                 // interrupted goals must be handled by interrupt trigger
                 if (!interrupt_traj_) {
                     ROS_INFO("Trajectory executed successfully");
