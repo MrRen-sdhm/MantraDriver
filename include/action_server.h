@@ -4,9 +4,6 @@
 
 #pragma once
 
-#include <actionlib/server/action_server.h>
-#include <actionlib/server/server_goal_handle.h>
-#include <control_msgs/FollowJointTrajectoryAction.h>
 #include <ros/ros.h>
 #include <atomic>
 #include <chrono>

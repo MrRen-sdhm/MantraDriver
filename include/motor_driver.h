@@ -259,9 +259,9 @@ public:
     ros::NodeHandle nh_;
 
     /// 关节位置相关参数
-    std::array<double, motor_cnt_> curr_pos{}; // 读取位置数据的缓冲区
-    std::array<double, motor_cnt_> curr_vel{}; // 读取速度数据的缓冲区
-    std::array<double, motor_cnt_> curr_eff{}; // 读取力矩数据的缓冲区
+    std::array<float, motor_cnt_> curr_pos{}; // 读取位置数据的缓冲区
+    std::array<float, motor_cnt_> curr_vel{}; // 读取速度数据的缓冲区
+    std::array<float, motor_cnt_> curr_eff{}; // 读取力矩数据的缓冲区
 
     MotorDriver(string ip, int port, int slaver, const string& joint_prefix); // 构造函数
 

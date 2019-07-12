@@ -22,53 +22,60 @@ void ActionServer::start() {
 
     ROS_INFO("Starting ActionServer");
     running_ = true;
-    tj_thread_ = std::thread(&ActionServer::trajectoryThread, this);
     as_.start();
 }
 
 // TODO:机械臂状态更新
-void ActionServer::onRobotStateChange() {
-
-    // don't interrupt if everything is fine
-//    if (state == RobotState::Running)
+//void ActionServer::onRobotStateChange() {
+//
+//    // don't interrupt if everything is fine
+////    if (state == RobotState::Running)
+////        return;
+//
+//    // don't retry interrupts
+//    if (interrupt_traj_ || !has_goal_)
 //        return;
-
-    // don't retry interrupts
-    if (interrupt_traj_ || !has_goal_)
-        return;
-
-    // on successful lock we're not executing a goal so don't interrupt
-    if (tj_mutex_.try_lock()) {
-        tj_mutex_.unlock();
-        return;
-    }
-
-    interrupt_traj_ = true;
-    // wait for goal to be interrupted and automagically unlock when going out of scope
-    std::lock_guard<std::mutex> lock(tj_mutex_);
-
-    Result res;
-    res.error_code = -100;
-    res.error_string = "Robot safety stop";
-    curr_gh_.setAborted(res, res.error_string);
-}
+//
+//    // on successful lock we're not executing a goal so don't interrupt
+//    if (tj_mutex_.try_lock()) {
+//        tj_mutex_.unlock();
+//        return;
+//    }
+//
+//    interrupt_traj_ = true;
+//    // wait for goal to be interrupted and automagically unlock when going out of scope
+//    std::lock_guard<std::mutex> lock(tj_mutex_);
+//
+//    Result res;
+//    res.error_code = -100;
+//    res.error_string = "Robot safety stop";
+//    curr_gh_.setAborted(res, res.error_string);
+//}
 
 // 更新机械臂状态数据
-bool ActionServer::getCurrState() {
-    curr_pos_ = driver_.curr_pos;
-    curr_vel_ = driver_.curr_vel;
-    return true;
-}
+//bool ActionServer::getCurrState() {
+//    curr_pos_ = driver_.curr_pos;
+//    curr_vel_ = driver_.curr_vel;
+//    return true;
+//}
 
 // NOTE：接收Action目标的回调函数, 在收到客户端请求时回调
 void ActionServer::onGoal(GoalHandle gh) {
     Result res;
     res.error_code = -100;
+    res.error_string = "set goal failed";
 
     ROS_INFO("Received new goal");
 
-    if (!validate(gh, res) || !try_execute(gh, res)) {
+    if (!validate(gh, res)) {
         ROS_ERROR("Goal error: %s", res.error_string.c_str());
+        gh.setRejected(res, res.error_string);
+    }
+
+    int ret = follower_.set_goal(gh);
+    if (ret) {
+        gh.setAccepted();
+    } else {
         gh.setRejected(res, res.error_string);
     }
 }
@@ -186,27 +193,27 @@ inline std::chrono::microseconds convert(const ros::Duration &dur) {
 }
 
 // 执行动作
-bool ActionServer::try_execute(GoalHandle &gh, Result &res) {
-    if (!running_) {
-        res.error_string = "Internal error";
-        return false;
-    }
-    if (!tj_mutex_.try_lock()) { // 轨迹线程未上锁
-        interrupt_traj_ = true;
-        res.error_string = "Received another trajectory";
-        curr_gh_.setAborted(res, res.error_string);
-        tj_mutex_.lock(); // 上锁
-        // todo: make configurable
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
-    }
-    // locked here
-    curr_gh_ = gh; // NOTE: 保存当前目标
-    interrupt_traj_ = false;
-    has_goal_ = true;
-    tj_mutex_.unlock(); // 解锁
-    tj_cv_.notify_one(); // 唤醒一个线程
-    return true;
-}
+//bool ActionServer::try_execute(GoalHandle &gh, Result &res) {
+//    if (!running_) {
+//        res.error_string = "Internal error";
+//        return false;
+//    }
+//    if (!tj_mutex_.try_lock()) { // 轨迹线程未上锁
+//        interrupt_traj_ = true;
+//        res.error_string = "Received another trajectory";
+//        curr_gh_.setAborted(res, res.error_string);
+//        tj_mutex_.lock(); // 上锁
+//        // todo: make configurable
+//        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+//    }
+//    // locked here
+//    curr_gh_ = gh; // NOTE: 保存当前目标
+//    interrupt_traj_ = false;
+//    has_goal_ = true;
+//    tj_mutex_.unlock(); // 解锁
+//    tj_cv_.notify_one(); // 唤醒一个线程
+//    return true;
+//}
 
 std::vector<size_t> ActionServer::reorderMap(const std::vector<std::string>& goal_joints) {
     std::vector<size_t> indices;
@@ -223,83 +230,83 @@ std::vector<size_t> ActionServer::reorderMap(const std::vector<std::string>& goa
 }
 
 // 轨迹线程
-void ActionServer::trajectoryThread() {
-    ROS_INFO("Trajectory thread started");
-
-    while (running_) {
-        std::unique_lock<std::mutex> lk(tj_mutex_); // 互斥锁
-        // 阻塞当前线程
-        if (!tj_cv_.wait_for(lk, std::chrono::milliseconds(100), [&] { return running_ && has_goal_; }))
-            continue;
-
-        ROS_INFO("Trajectory received and accepted");
-        // 检查到轨迹, 开始处理
-        curr_gh_.setAccepted();
-
-        auto goal = curr_gh_.getGoal(); // 获取轨迹
-        std::vector<TrajectoryPoint> trajectory; /// 待处理轨迹列表
-        trajectory.reserve(goal->trajectory.points.size() + 1); // 申请空间
-
-        // moveit发送的 joint_names 可能没有顺序, 重新排序
-        auto mapping = reorderMap(goal->trajectory.joint_names);
-
-        ROS_INFO("Translating trajectory");
-
-        auto const &fp = goal->trajectory.points[0]; // 第一个轨迹点
-        auto fpt = convert(fp.time_from_start); // 转换为微秒
-
-        // make sure we have a proper t0 position
-        if (fpt > std::chrono::microseconds(0)) { // 保证有合适的起始轨迹点
-            ROS_INFO("Trajectory without t0 recieved, inserting t0 at currrent position");
-            getCurrState(); // 获取当前位置及速度, 作为起始轨迹点
-            trajectory.emplace_back(TrajectoryPoint(curr_pos_, curr_vel_, std::chrono::microseconds(0)));
-        }
-
-        for (auto const &point : goal->trajectory.points) { /// 处理从moveit接收到的轨迹
-            std::array<double, MotorDriver::motor_cnt_> pos{}, vel{};
-            for (size_t i = 0; i < MotorDriver::motor_cnt_; i++) {
-                size_t idx = mapping[i];
-                pos[idx] = point.positions[i];
-                vel[idx] = point.velocities[i];
-            }
-            auto t = convert(point.time_from_start);
-            trajectory.emplace_back(TrajectoryPoint(pos, vel, t)); /// moveit生成的轨迹点存入轨迹列表
-        }
-
-        double t = std::chrono::duration_cast<std::chrono::duration<double>>( // 末尾轨迹点对应时间
-                        trajectory[trajectory.size() - 1].time_from_start).count();
-        ROS_INFO("Executing trajectory with %zu points and duration of %4.3fs", trajectory.size(), t);
-
-        Result res;
-
-        ROS_INFO("Attempting to start follower %p", &follower_);
-        // 开启轨迹跟踪
-        if (follower_.start()) { // 启动轨迹跟踪, 此处running_置true
-            if (follower_.execute(trajectory, interrupt_traj_)) { /// 执行轨迹列表中的轨迹
-                // interrupted goals must be handled by interrupt trigger
-                if (!interrupt_traj_) {
-                    ROS_INFO("Trajectory executed successfully");
-                    res.error_code = Result::SUCCESSFUL;
-                    curr_gh_.setSucceeded(res);
-                } else
-                    ROS_INFO("Trajectory interrupted");
-            } else {
-                ROS_INFO("Trajectory failed");
-                res.error_code = -100;
-                res.error_string = "Connection to robot was lost";
-                curr_gh_.setAborted(res, res.error_string);
-            }
-            follower_.stop(); // 停止轨迹跟踪 此处running_置false
-        } else {
-            ROS_ERROR("Failed to start trajectory follower!");
-            res.error_code = -100;
-            res.error_string = "Robot connection could not be established";
-            curr_gh_.setAborted(res, res.error_string);
-        }
-
-        has_goal_ = false;
-        lk.unlock(); // 关闭互斥锁
-    }
-}
+//void ActionServer::trajectoryThread() {
+//    ROS_INFO("Trajectory thread started");
+//
+//    while (running_) {
+//        std::unique_lock<std::mutex> lk(tj_mutex_); // 互斥锁
+//        // 阻塞当前线程
+//        if (!tj_cv_.wait_for(lk, std::chrono::milliseconds(100), [&] { return running_ && has_goal_; }))
+//            continue;
+//
+//        ROS_INFO("Trajectory received and accepted");
+//        // 检查到轨迹, 开始处理
+//        curr_gh_.setAccepted();
+//
+//        auto goal = curr_gh_.getGoal(); // 获取轨迹
+//        std::vector<TrajectoryPoint> trajectory; /// 待处理轨迹列表
+//        trajectory.reserve(goal->trajectory.points.size() + 1); // 申请空间
+//
+//        // moveit发送的 joint_names 可能没有顺序, 重新排序
+//        auto mapping = reorderMap(goal->trajectory.joint_names);
+//
+//        ROS_INFO("Translating trajectory");
+//
+//        auto const &fp = goal->trajectory.points[0]; // 第一个轨迹点
+//        auto fpt = convert(fp.time_from_start); // 转换为微秒
+//
+//        // make sure we have a proper t0 position
+//        if (fpt > std::chrono::microseconds(0)) { // 保证有合适的起始轨迹点
+//            ROS_INFO("Trajectory without t0 recieved, inserting t0 at currrent position");
+//            getCurrState(); // 获取当前位置及速度, 作为起始轨迹点
+//            trajectory.emplace_back(TrajectoryPoint(curr_pos_, curr_vel_, std::chrono::microseconds(0)));
+//        }
+//
+//        for (auto const &point : goal->trajectory.points) { /// 处理从moveit接收到的轨迹
+//            std::array<double, MotorDriver::motor_cnt_> pos{}, vel{};
+//            for (size_t i = 0; i < MotorDriver::motor_cnt_; i++) {
+//                size_t idx = mapping[i];
+//                pos[idx] = point.positions[i];
+//                vel[idx] = point.velocities[i];
+//            }
+//            auto t = convert(point.time_from_start);
+//            trajectory.emplace_back(TrajectoryPoint(pos, vel, t)); /// moveit生成的轨迹点存入轨迹列表
+//        }
+//
+//        double t = std::chrono::duration_cast<std::chrono::duration<double>>( // 末尾轨迹点对应时间
+//                        trajectory[trajectory.size() - 1].time_from_start).count();
+//        ROS_INFO("Executing trajectory with %zu points and duration of %4.3fs", trajectory.size(), t);
+//
+//        Result res;
+//
+//        ROS_INFO("Attempting to start follower %p", &follower_);
+//        // 开启轨迹跟踪
+//        if (follower_.start()) { // 启动轨迹跟踪, 此处running_置true
+//            if (follower_.execute(trajectory, interrupt_traj_)) { /// 执行轨迹列表中的轨迹
+//                // interrupted goals must be handled by interrupt trigger
+//                if (!interrupt_traj_) {
+//                    ROS_INFO("Trajectory executed successfully");
+//                    res.error_code = Result::SUCCESSFUL;
+//                    curr_gh_.setSucceeded(res);
+//                } else
+//                    ROS_INFO("Trajectory interrupted");
+//            } else {
+//                ROS_INFO("Trajectory failed");
+//                res.error_code = -100;
+//                res.error_string = "Connection to robot was lost";
+//                curr_gh_.setAborted(res, res.error_string);
+//            }
+//            follower_.stop(); // 停止轨迹跟踪 此处running_置false
+//        } else {
+//            ROS_ERROR("Failed to start trajectory follower!");
+//            res.error_code = -100;
+//            res.error_string = "Robot connection could not be established";
+//            curr_gh_.setAborted(res, res.error_string);
+//        }
+//
+//        has_goal_ = false;
+//        lk.unlock(); // 关闭互斥锁
+//    }
+//}
 
 }

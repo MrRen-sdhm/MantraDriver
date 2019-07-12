@@ -146,8 +146,7 @@ set(SOURCE_FILES
         src/motor_driver.cpp
         src/action_server.cpp
         src/robot_state_publisher.cpp
-        src/trajectory_follower.cpp
-        )
+        src/trajectory_follower.cpp)
 
 ## Declare a C++ library
 # add_library(${PROJECT_NAME}

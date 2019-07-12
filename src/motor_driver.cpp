@@ -76,7 +76,7 @@ void MotorDriver::comm_callback(const ros::TimerEvent& e) {
 //    do_write_operation();
 
     // 读各关节当前位置
-//    do_read_operation();
+    do_read_operation();
 
     // 获取目标关节角度
 //    cout << endl << "goal_position [";
