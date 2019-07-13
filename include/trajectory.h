@@ -1,5 +1,3 @@
-#include <utility>
-
 //
 // Created by sdhm on 7/12/19.
 //
@@ -8,6 +6,7 @@
 
 #include <array>
 #include <cmath>
+#include <utility>
 #include <functional>
 #include <limits>
 #include <utility>
@@ -54,7 +53,7 @@ struct Trajectory {
             printf("[TRAJ Empty]\n");
             return;
         }
-        printf("[TRAJ length=%d (%.3f s)]\n", points_length, (points[points_length - 1].time_nsec - points[0].time_nsec) / 1e9f);
+        printf("[TRAJ length=%zu (%.3f s)]\n", points_length, (points[points_length - 1].time_nsec - points[0].time_nsec) / 1e9f);
 
         printf("[TRAJ]: path_tol=[");
         for (int i = 0; i < joint_count_; i++) {
@@ -112,7 +111,7 @@ public:
 
     const GoalHandle& gh;
 
-    Trajectory<joint_count, max_trajectory_points>& traj;
+    Trajectory<joint_count, max_trajectory_points>& traj; // 待执行的轨迹
 
     TrajectoryParser(std::vector<string>  _joint_names, decltype(gh) _gh, decltype(traj) _traj)
             : joint_names(std::move(_joint_names)), gh(_gh) ,traj(_traj) {
@@ -125,12 +124,12 @@ public:
         // 拷贝数据
         for (int i = 0; i < goal->trajectory.points.size(); i++) {
             const trajectory_msgs::JointTrajectoryPoint& p = goal->trajectory.points[i];
-
+            // 相对于轨迹跟踪开始的时间偏移 单位ns
             traj.points[i].time_nsec = (uint64_t)p.time_from_start.sec * 1000000000 + p.time_from_start.nsec;
 
-            for (int i = 0; i < joint_count; i++) {
-                float pos = p.positions[i];
-                traj.points[i].positions[i] = pos;
+            for (int j = 0; j < joint_count; j++) {
+                float pos = p.positions[j];
+                traj.points[i].positions[j] = pos;
             }
         }
         traj.points_length = goal->trajectory.points.size();

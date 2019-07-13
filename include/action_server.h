@@ -34,15 +34,9 @@ private:
     double max_velocity_;
 
     GoalHandle curr_gh_;
-    std::atomic<bool> interrupt_traj_;
-    std::atomic<bool> has_goal_, running_;
-    std::mutex tj_mutex_;
-    std::condition_variable tj_cv_;
-    std::thread tj_thread_;
+    bool running_;
 
     TrajectoryFollower &follower_;
-
-    std::array<double, MotorDriver::motor_cnt_> curr_pos_{}, curr_vel_{};
 
     void onGoal(GoalHandle gh);
 
@@ -56,23 +50,14 @@ private:
 
     bool validateTrajectory(GoalHandle &gh, Result &res);
 
-    bool try_execute(GoalHandle &gh, Result &res);
-
-    void interruptGoal(GoalHandle &gh);
-
     std::vector<size_t> reorderMap(const std::vector<std::string>& goal_joints);
-
-    void trajectoryThread();
-
-    bool getCurrState();
 
 public:
     ActionServer(TrajectoryFollower &follower, MotorDriver& driver, string action_ns, double max_velocity);
 
-    void start();
     MotorDriver& driver_;
-
-    void onRobotStateChange();
+    void start();
+    void spinOnce();
 };
 
 }

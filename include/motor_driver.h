@@ -2,8 +2,7 @@
 // Created by sdhm on 7/5/19.
 //
 
-#ifndef MANTRADRIVER_DRIVER_H
-#define MANTRADRIVER_DRIVER_H
+#pragma once
 
 #include <cstdio>
 #include <stdlib.h>
@@ -140,15 +139,15 @@ struct MantraDevice {
         return (int16_t *) &registers;
     }
 //
-    int32_t _max_position(uint8_t id) {
-        static_assert(cycle_step % 2 == 0, "motor_cycle_step must divide by 2");
-        return (cycle_step / 2) * reduction_ratio[id] - 1;
-    }
-
-    int32_t _min_position(uint8_t id) {
-        static_assert(cycle_step % 2 == 0, "motor_cycle_step must divide by 2");
-        return -(cycle_step / 2) * reduction_ratio[id];
-    }
+//    int32_t _max_position(uint8_t id) {
+//        static_assert(cycle_step % 2 == 0, "motor_cycle_step must divide by 2");
+//        return (cycle_step / 2) * reduction_ratio[id] - 1;
+//    }
+//
+//    int32_t _min_position(uint8_t id) {
+//        static_assert(cycle_step % 2 == 0, "motor_cycle_step must divide by 2");
+//        return -(cycle_step / 2) * reduction_ratio[id];
+//    }
 
 //    // 计算电机当前角度, 单位: rad, 有效范围-pi到+pi
 //    float present_position(int id) {
@@ -200,14 +199,15 @@ struct MantraDevice {
         if (!std::isfinite(rad)) {
             return false;
         }
-        rad = std::min((double) M_PI, rad);
-        rad = std::max((double) -M_PI, rad);
+//        rad = std::min((double) M_PI, rad);
+//        rad = std::max((double) -M_PI, rad);
         double rounds = rad / (2 * double(M_PI)); // 对应的转数
-        auto pos = int32_t (rounds / reduction_ratio[id] * cycle_step); // 脉冲数 = 转数/减速比*分辨率
-        // FIXME:正负号？
-        pos = std::min(_max_position(id), pos);
-        pos = std::max(_min_position(id), pos);
+        auto pos = int32_t (rounds / reduction_ratio[id-1] * cycle_step); // 脉冲数 = 转数/减速比*分辨率
+        // FIXME:限位
+//        pos = std::min(_max_position(id), pos);
+//        pos = std::max(_min_position(id), pos);
         *goal_pos_ptr(id) = pos; // 写位置
+
         return true;
     }
 
@@ -220,7 +220,9 @@ struct MantraDevice {
 
     // 获取目标位置
     double get_goal_position(uint8_t id) {
-        return int32_t (*goal_pos_ptr(id));
+        auto cycle = int32_t(*goal_pos_ptr(id));
+        double rounds = (double)(cycle) / cycle_step * reduction_ratio[id-1];
+        return rounds * (2 * double(M_PI));
     }
 
     // 获取当前位置
@@ -251,12 +253,7 @@ namespace Mantra {
 class MotorDriver {
 public:
     static const uint8_t motor_cnt_ = 7; // 电机数
-    const int timer_span_ = 10; // 通信频率 HZ
     std::vector<std::string> joint_names_{}; // 关节名称
-
-    /// 定时器相关参数
-    ros::Timer timer_;
-    ros::NodeHandle nh_;
 
     /// 关节位置相关参数
     std::array<float, motor_cnt_> curr_pos{}; // 读取位置数据的缓冲区
@@ -266,10 +263,6 @@ public:
     MotorDriver(string ip, int port, int slaver, const string& joint_prefix); // 构造函数
 
     /// 外部接口
-    // 启动通信定时器
-    void start();
-    // 数据通信回调
-    void comm_callback(const ros::TimerEvent& e);
     // 设置虚拟寄存器中关节位置
     bool set_position(uint8_t id, double rad) {
         return device_.set_goal_position(id, rad);
@@ -309,4 +302,3 @@ private:
 
 }
 
-#endif //MANTRADRIVER_DRIVER_H

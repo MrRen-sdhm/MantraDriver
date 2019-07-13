@@ -35,9 +35,18 @@ bool RTPublisher::publishTool(Time &t) {
     return true;
 }
 
-bool RTPublisher::publish() {
+
+void RTPublisher::start() {
+    // 通信定时器
+    timer_ = nh_.createTimer(ros::Duration(1.0 / timer_span_), &RTPublisher::pub_callback, this); // 50HZ 受限于主循环频率
+    timer_.start();
+}
+
+// 定时发布回调函数
+void RTPublisher::pub_callback(const ros::TimerEvent& e) {
     Time time = Time::now();
-    return publishJoints(time);
+    // 写各关节目标位置
+    publishJoints(time);
 }
 
 }
