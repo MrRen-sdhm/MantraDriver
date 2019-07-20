@@ -53,9 +53,9 @@ struct Trajectory {
             printf("[TRAJ Empty]\n");
             return;
         }
-        printf("[TRAJ length=%zu (%.3f s)]\n", points_length, (points[points_length - 1].time_nsec - points[0].time_nsec) / 1e9f);
+        printf("[TRAJ] length=%zu (%.3f s)]\n", points_length, (points[points_length - 1].time_nsec - points[0].time_nsec) / 1e9f);
 
-        printf("[TRAJ]: path_tol=[");
+        printf("[TRAJ] path_tol=[");
         for (int i = 0; i < joint_count_; i++) {
             if (i > 0) {
                 printf(",");
@@ -64,7 +64,7 @@ struct Trajectory {
         }
         printf("]\n");
 
-        printf("[TRAJ]: goal_tol=[");
+        printf("[TRAJ] goal_tol=[");
         for (int i = 0; i < joint_count_; i++) {
             if (i > 0) {
                 printf(",");
@@ -73,30 +73,26 @@ struct Trajectory {
         }
         printf("]\n");
 
-        printf("[TRAJ]: goal_time_tolerance=%d ms\n", (int)(goal_time_tolerance / 1000000));
-        do {
-            auto& p = points[0];
-            printf("[TRAJ]: begin (%d ms)=[", int(p.time_nsec / 1000000));
-            for (int i = 0; i < joint_count_; i++) {
-                if (i > 0) {
-                    printf(",");
-                }
-                printf("%.2f", R2D(p.positions[i]));
+        printf("[TRAJ] goal_time_tolerance=%d ms\n", (int)(goal_time_tolerance / 1000000));
+        auto& p = points[0];
+        printf("[TRAJ] begin (%d ms)=[", int(p.time_nsec / 1000000));
+        for (int i = 0; i < joint_count_; i++) {
+            if (i > 0) {
+                printf(",");
             }
-            printf("]\n");
-        } while (0);
+            printf("%.2f", R2D(p.positions[i]));
+        }
+        printf("]\n");
 
-        do {
-            auto& p = points[points_length - 1];
-            printf("[TRAJ]: end (%d ms)=[", int(p.time_nsec / 1000000));
-            for (int i = 0; i < joint_count_; i++) {
-                if (i > 0) {
-                    printf(",");
-                }
-                printf("%.2f", R2D(p.positions[i]));
+        auto& p1 = points[points_length - 1];
+        printf("[TRAJ] end (%d ms)=[", int(p1.time_nsec / 1000000));
+        for (int i = 0; i < joint_count_; i++) {
+            if (i > 0) {
+                printf(",");
             }
-            printf("]\n");
-        } while (0);
+            printf("%.2f", R2D(p1.positions[i]));
+        }
+        printf("]\n");
     }
 };
 

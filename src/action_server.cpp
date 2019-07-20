@@ -4,6 +4,7 @@
 
 #include <utility>
 #include "action_server.h"
+#include "trajectory_follower.h"
 
 namespace Mantra {
 ActionServer::ActionServer(TrajectoryFollower &follower, MotorDriver& driver, string action_ns, double max_velocity)
@@ -16,25 +17,25 @@ ActionServer::ActionServer(TrajectoryFollower &follower, MotorDriver& driver, st
 
 // 开启Action服务, 并开启轨迹线程
 void ActionServer::start() {
-    ROS_INFO("Starting ActionServer");
+    printf("[INFO] Starting ActionServer...\n");
     as_.start();
 }
 
-// NOTE：接收Action目标的回调函数, 在收到客户端请求时回调
+// 接收Action目标的回调函数, 在收到客户端请求时回调
 void ActionServer::onGoal(GoalHandle gh) {
     running_ = true;
     Result res;
     res.error_code = -100;
     res.error_string = "set goal failed";
 
-    ROS_INFO("Received new goal");
+    printf("\033[0;36m[INFO] Action server received a new goal.\033[0m\n");
 
     if (!validate(gh, res)) {
         ROS_ERROR("Goal error: %s", res.error_string.c_str());
         gh.setRejected(res, res.error_string);
     }
 
-    int ret = follower_.set_goal(gh); // 开始轨迹跟踪
+    int ret = follower_.set_goal(gh); /// 开始轨迹跟踪
     if (ret) {
         gh.setAccepted();
     } else {
@@ -46,19 +47,23 @@ void ActionServer::onGoal(GoalHandle gh) {
 // 轨迹执行状态更新
 void ActionServer::spinOnce() {
     Result res;
-    if (!follower_.runing_ && running_) { // 轨迹跟踪已执行完成, Action仍未完成
-        ROS_INFO("Trajectory executed successfully!");
+    if (follower_.result_.error_string == "SUCCESS" && running_) { // 轨迹跟踪已执行完成, Action仍未完成
+        printf("\033[0;36m[TRAJ] Trajectory executed successfully!\033[0m\n");
         res.error_code = Result::SUCCESSFUL;
         curr_gh_.setSucceeded(res);
-        running_ = false; // Action完成
+        running_ = false; // Action完成, 恢复初始状态
+        follower_.result_.error_string = "PREPARE"; // 轨迹跟踪进入准备状态
     }
 }
 
-// 取消动作
+// 取消Action动作
 void ActionServer::onCancel(GoalHandle gh) {
+    running_ = false; // 结束此次Action
+    follower_.cancle_by_client(); // 客户端取消轨迹跟踪, 即PC端
+
     Result res;
     res.error_code = -100;
-    res.error_string = "Goal cancelled by client";
+    res.error_string = "Goal cancelled by client.";
     gh.setCanceled(res);
 }
 
@@ -117,7 +122,7 @@ bool ActionServer::validateTrajectory(GoalHandle &gh, Result &res) {
     auto goal = gh.getGoal();
     res.error_code = Result::INVALID_GOAL;
 
-    // must at least have one point
+    // 须含有轨迹点
     if (goal->trajectory.points.empty())
         return false;
 

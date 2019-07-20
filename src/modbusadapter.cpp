@@ -72,17 +72,17 @@ int ModbusAdapter::modbusConnectTCP(const string ip, int port, int timeOut)
     string line;
     modbusDisConnect();
 
-    cout << "Modbus Connect TCP...\n";
+    cout << "[INFO] Modbus Connect TCP...\n";
 
-    line = "Connecting to IP : " + ip + ":" + to_string(port);
+    line = "[INFO] Connecting to IP: " + ip + ":" + to_string(port);
 
     if (ip == ""){
-        cerr <<  "Connection failed. Blank IP Address\n";
+        cerr <<  "[ERRO] Connection failed. Blank IP Address\n";
         return -2;
     }
     else {
         m_modbus = modbus_new_tcp(ip.c_str(), port);
-        cout <<  "Connecting to IP : " << ip << ":" << port << endl;
+//        cout <<  "[INFO] Connecting to IP : " << ip << ":" << port << endl;
     }
 
     //Debug messages from libmodbus
@@ -96,7 +96,7 @@ int ModbusAdapter::modbusConnectTCP(const string ip, int port, int timeOut)
     }
     else if(m_modbus && modbus_connect(m_modbus) == -1) {
         modbus_free(m_modbus);
-        cerr << "Connection to IP : " << ip << ":" << port << " failed. Could not connect to TCP port\n";
+        cerr << "Connection to IP: " << ip << ":" << port << " failed. Could not connect to TCP port\n";
         m_connected = false;
         line += " Failed\n";
         throw runtime_error("Could not connect to TCP port!");
@@ -117,7 +117,7 @@ void ModbusAdapter::modbusDisConnect()
 {
     //Modbus disconnect
 
-    cout <<  "Modbus disconnected...\n";
+    cout <<  "[INFO] Modbus disconnected...\n";
 
     if(m_modbus != nullptr) {
         if (m_connected){

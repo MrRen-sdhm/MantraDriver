@@ -16,14 +16,19 @@
 #include <memory>
 
 #include <ros/ros.h>
+#include <std_msgs/Int32MultiArray.h>
 
-#include "utils.h"
 #include "modbusadapter.h"
 
-#define R2D(rad) ((rad) / M_PI * 180)
-#define D2R(deg) ((deg) * M_PI / 180)
+#define R2D(rad) ((rad) / (float)M_PI * 180)
+#define D2R(deg) ((deg) * (float)M_PI / 180)
 
 using namespace std::chrono;
+
+// 获取寄存器偏移量
+template<typename T, typename U>
+constexpr size_t offsetOf(U T::*member) {
+    return (int16_t *) &((T *) nullptr->*member) - (int16_t *) nullptr; }
 
 struct MantraDevice {
     static const int cycle_step = 262144; // 编码器一圈分辨率
@@ -118,6 +123,18 @@ struct MantraDevice {
         int32_t joint_speed_6; // Joint_6速度
         int32_t joint_speed_7; // Joint_7速度
     } registers;
+
+    struct BitRegister {
+        // 16字节 8个数据
+        int16_t jog; // 40011-40012 offset 0
+        int16_t reset_power;
+        int16_t back_home;
+
+//        int8_t reset;
+//        int8_t power;
+//        int8_t back;
+//        int8_t home;
+    } bit_registers;
 #pragma pack(pop) // 还原内存对齐
 
     static uint8_t offset_goal_position(int id) {
@@ -137,6 +154,10 @@ struct MantraDevice {
 
     int16_t *memory() {
         return (int16_t *) &registers;
+    }
+
+    int16_t *bit_memory() {
+        return (int16_t *) &bit_registers;
     }
 //
 //    int32_t _max_position(uint8_t id) {
@@ -202,7 +223,7 @@ struct MantraDevice {
 //        rad = std::min((double) M_PI, rad);
 //        rad = std::max((double) -M_PI, rad);
         double rounds = rad / (2 * double(M_PI)); // 对应的转数
-        auto pos = int32_t (rounds / reduction_ratio[id-1] * cycle_step); // 脉冲数 = 转数/减速比*分辨率
+        auto pos = int32_t (rounds * reduction_ratio[id-1] * cycle_step); // 脉冲数 = 转数/减速比*分辨率
         // FIXME:限位
 //        pos = std::min(_max_position(id), pos);
 //        pos = std::max(_min_position(id), pos);
@@ -274,13 +295,26 @@ private:
     /// modbus相关参数
     ModbusAdapter *m_master_; // modbus服务器
     int slaver_; // modbus客户端id
+    ros::NodeHandle nh_; // ROS节点句柄
+    ros::Subscriber sub_hmi_; // 上位机消息订阅
+    bool do_read_flag_  = false; // 读取标志
+    bool do_write_flag_ = false; // 写入标志
+    bool set_home_flag_ = false; // 归零标志
+    double last_print_time_ = 0; // 上次状态打印时间
 
     /// 寄存器相关参数
     MantraDevice device_; // 机械臂
-    const uint32_t hmi_addr_head_ = 40011; // HMI字节操作首地址
-    const uint32_t hmi_addr_power_ = 40002; // 高八位为关节使能地址, 10-16位控制各关节使能, 9位控制所有关节
+    const uint32_t hmi_addr_head_  = 10; // HMI字节操作首地址 HMI:40011->modbus addr 10
+    const uint32_t hmi_bit_addr_head_ = 0; // HMI字节操作首地址 HMI:40011->modbus addr 10
+    const uint32_t hmi_addr_power_ = 01; // 高八位为关节使能地址, 10-16位控制各关节使能, 9位控制所有关节
+    const uint32_t hmi_addr_reset_ = 01; // 低八位为关节使能地址, 1-8位控制各关节复位, 1位控制所有关节
+    const uint32_t hmi_addr_home_  = 02; // 高八位为关节置零地址, 10-16位控制各关节置零, 9位控制所有关节
+    const uint32_t hmi_addr_back_  = 02; // 低八位为关节回零地址, 1-8位控制各关节回零, 1位控制所有关节
     size_t reg_size_ = sizeof(typename MantraDevice::Register); // MantraDevice::Register尺寸
     size_t ctrller_reg_len_ = reg_size_/2; // 控制器寄存器数量, 即uint16_t数据量
+
+    size_t bit_reg_size_ = sizeof(typename MantraDevice::BitRegister); // MantraDevice::BitRegister尺寸
+    size_t bit_reg_len_ = bit_reg_size_/2; // 控制器寄存器数量, 即uint16_t数据量
 
     // modbus读保持寄存器数据, 使用uint16_t类型写入虚拟寄存器, 使用数据时将虚拟寄存器数据转换为int16或int32类型即可
     int _read_data(int addr, int len, uint16_t* data) {
@@ -294,10 +328,42 @@ private:
     }
 
     // 使能所有关节 写40002的高八位, 第9位控制所有关节
-    int enable_all_motor() {
-        int16_t enable_all = 0x0100; // 第9位置1
-        _write_data(hmi_addr_power_, 1, (uint16_t*) &enable_all);
+    int enable_all_power() {
+        int16_t enable_all = 0x00FF; // 高8位位置1
+        return _write_data(hmi_addr_power_, 1, (uint16_t*) &enable_all);
     }
+
+    // 使能所有关节 写40002的高八位, 第9位控制所有关节
+    int disable_all_power() {
+        int16_t disable_all = 0x0000; // 高8位置0
+        return _write_data(hmi_addr_power_, 1, (uint16_t*) &disable_all);
+    }
+
+    // 使能所有关节 写40002的高八位, 第9位控制所有关节
+    int reset_all_motor() {
+        int16_t reset_all = 0x7F00; // 第1位置1
+        return _write_data(hmi_addr_reset_, 1, (uint16_t*) &reset_all);
+    }
+
+    // 使能所有关节 写40002的高八位, 第9位控制所有关节
+    int set_all_home() {
+        int16_t set_all = 0x00FF; // 第9位置1
+        return _write_data(hmi_addr_home_, 1, (uint16_t*) &set_all);
+    }
+
+    int back_all_home() {
+        int16_t back_all = 0x8000; // 第1位置1
+        return _write_data(hmi_addr_back_, 1, (uint16_t*) &back_all);
+    }
+
+    int back_all_home_done() {
+        int16_t back_all = 0x0000; // 第1位置1
+        return _write_data(hmi_addr_back_, 1, (uint16_t*) &back_all);
+    }
+
+    void hmi_callback(const std_msgs::Int32MultiArray::ConstPtr& msg);
+
+    void print_position();
 };
 
 }

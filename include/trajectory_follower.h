@@ -25,6 +25,13 @@ using namespace std::chrono;
 
 namespace Mantra {
 
+enum class Result_My {
+    NONE,      // 未知
+    SUCCESS,   // 成功
+    FAILED,    // 失败
+    CANCLE,    // 取消
+};
+
 class TrajectoryFollower {
 
 public:
@@ -69,10 +76,10 @@ public:
     size_t next_point_index_{}; // 当前插值的下一个轨迹点
     double last_print_time_ = 0; // 轨迹执行状态打印时间
 
-    control_msgs::FollowJointTrajectoryResult result_;
+    control_msgs::FollowJointTrajectoryResult result_; // 轨迹执行结果
 
     // 线性插值算法
-    int linear_interpolate(const TrajectoryPoint <joint_count_> &begin, const TrajectoryPoint <joint_count_> &end,
+    static int linear_interpolate(const TrajectoryPoint <joint_count_> &begin, const TrajectoryPoint <joint_count_> &end,
                            TrajectoryPoint <joint_count_> &current) {
         // 检查时间戳
         if (current.time_nsec < begin.time_nsec || current.time_nsec > end.time_nsec) {
@@ -232,7 +239,7 @@ public:
                     time_start_ = now;
                     next_point_index_ = 0;
                     state_ = State::WORKING;
-                    printf("[TRAJ]: Start follow trajectory.\n");
+                    printf("\033[0;36m[TRAJ] Start follow trajectory.\033[0m\n");
                     // don't break here
 
                 case State::WORKING:
@@ -264,9 +271,10 @@ public:
                         _set_motor_positions(desired_point_.positions);
 
                         // 轨迹执行完成
-                        printf("[TRAJ]: Follow trajectory done.\n");
+                        printf("\033[0;36m[TRAJ] Follow trajectory done.\033[0m\n");
                         runing_ = false;
-                        state_ = State ::STARTING;
+                        result_.error_string = "SUCCESS";
+                        state_ = State::STARTING;
                     }
 
                     // 打印插补后的轨迹
@@ -278,7 +286,7 @@ public:
                     if (Time::now().toSec() - last_print_time_ > 0) { // 间隔打印, 设为0即一直打印
                         last_print_time_ = Time::now().toSec();
                         auto &p = desired_point_;
-                        printf("[TRAJ]: %zu/%zu %.3fsec [", next_point_index_,
+                        printf("\033[0;36m[TRAJ]\033[0m %zu/%zu %.3fsec [", next_point_index_,
                                current_trajectory_.points_length, duration / 1e9f);
                         for (int i = 0; i < joint_count_; i++) {
                             if (i > 0)
@@ -304,10 +312,7 @@ public:
 //        if (runing_) _check_tolerance();
     }
 
-    // 由主循环调用, 设定目标
-    // 若尚未与电机建立通信, 则返回-1
-    // 若轨迹结构错误, 则取消操作并停在原位, 返回-2
-    // 若轨迹值非法, 则禁用电机, 返回-3
+    // 设置要跟踪的目标轨迹
     bool set_goal(const GoalHandle& gh) {
 //        if (emergency_stop()) {
 //            // 急停状态
@@ -326,13 +331,18 @@ public:
         // 拷贝轨迹数据
         parser.copy_trajectory();
 
-        printf("[GOAL] Goal accepted, start trajectory follow\n");
+        printf("\033[0;36m[TRAJ] Goal accepted, start trajectory follow.\033[0m\n");
 
         current_trajectory_.print();
 
         runing_ = true; /// 置为启动状态
 
         return true;
+    }
+
+    bool cancle_by_client() {
+        printf("\033[0;34m[TRAJ] Goal cancelled by client.\033[0m\n");
+        runing_ = false;
     }
 
 //    // 由主循环调用, 取消当前操作
