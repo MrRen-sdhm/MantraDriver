@@ -215,24 +215,24 @@ struct MantraDevice {
         }
     }
 
-    // 设定虚拟寄存器中 目标关节角度
+    // 设定虚拟寄存器中 目标关节角度 单位为度的10000倍
     bool set_goal_position(uint8_t id, double rad) {
         if (!std::isfinite(rad)) {
             return false;
         }
 //        rad = std::min((double) M_PI, rad);
 //        rad = std::max((double) -M_PI, rad);
-        double rounds = rad / (2 * double(M_PI)); // 对应的转数
-        auto pos = int32_t (rounds * reduction_ratio[id-1] * cycle_step); // 脉冲数 = 转数/减速比*分辨率
-        // FIXME:限位
-//        pos = std::min(_max_position(id), pos);
-//        pos = std::max(_min_position(id), pos);
+//        double rounds = rad / (2 * double(M_PI)); // 对应的转数
+//        auto pos = int32_t (rounds * reduction_ratio[id-1] * cycle_step); // 脉冲数 = 转数/减速比*分辨率
+
+        double deg = R2D(rad);
+        auto pos = int32_t (10000*deg);
         *goal_pos_ptr(id) = pos; // 写位置
 
         return true;
     }
 
-    // 设定虚拟寄存器中 目标关节角度 FIXME:仅用于调试
+    // 设定虚拟寄存器中 当前关节角度 FIXME:仅用于调试
     bool set_curr_position(uint8_t id, double deg) {
         auto pos = uint32_t (deg * 10000);
         *curr_pos_ptr(id) = pos; // 写位置

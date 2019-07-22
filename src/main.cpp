@@ -32,7 +32,7 @@ int main(int argc, char*argv[]){
     ros::AsyncSpinner spinner(1);
     spinner.start();
 
-    ros::Rate loop_rate(10); // 100HZ
+    ros::Rate loop_rate(50); // 100HZ
     while(ros::ok())
     {
         // 读取关节驱动器中关节位置

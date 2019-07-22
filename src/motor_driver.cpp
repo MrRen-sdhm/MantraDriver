@@ -52,7 +52,7 @@ MotorDriver::MotorDriver(string ip, const int port, int slaver, const string& jo
     sub_hmi_ = nh_.subscribe("mantra_hmi", 1, &MotorDriver::hmi_callback, this); // 订阅上位机消息
 
     // 设置目标关节角度
-    device_.set_goal_position(7, -0.01);
+    device_.set_goal_position(7, -0.02);
 //        device_.set_goal_position(1, M_PI);
 //        device_.set_goal_position(2, M_PI/2);
 //        device_.set_goal_position(3, M_PI/4);
