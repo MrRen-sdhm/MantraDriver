@@ -291,7 +291,7 @@ public:
                         for (int i = 0; i < joint_count_; i++) {
                             if (i > 0)
                                 printf(",");
-                            printf("%.2f", R2D(p.positions[i]));
+                            printf("%.3f(%.3f)", p.positions[i], R2D(p.positions[i]));
                         }
                         printf("]\n");
                     }

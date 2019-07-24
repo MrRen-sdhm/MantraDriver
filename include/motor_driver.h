@@ -95,33 +95,16 @@ struct MantraDevice {
         int16_t err_code_5;
         int16_t err_code_6;
         int16_t err_code_7;
-        // 10字节
+        // 2字节
         int16_t motor_status; // 电机状态
-        int32_t back_zero_speed; // 回零速度
-        int32_t jog_speed; // JOG速度
-        // 56字节
-        int32_t neg_limit_1; // Joint_1负限位
-        int32_t pos_limit_1; // Joint_1正限位
-        int32_t neg_limit_2; // Joint_2负限位
-        int32_t pos_limit_2; // Joint_2正限位
-        int32_t neg_limit_3; // Joint_3负限位
-        int32_t pos_limit_3; // Joint_3正限位
-        int32_t neg_limit_4; // Joint_4负限位
-        int32_t pos_limit_4; // Joint_4正限位
-        int32_t neg_limit_5; // Joint_5负限位
-        int32_t pos_limit_5; // Joint_5正限位
-        int32_t neg_limit_6; // Joint_6负限位
-        int32_t pos_limit_6; // Joint_6正限位
-        int32_t neg_limit_7; // Joint_7负限位
-        int32_t pos_limit_7; // Joint_7正限位
         // 28字节
-        int32_t joint_speed_1; // Joint_1速度
-        int32_t joint_speed_2; // Joint_2速度
-        int32_t joint_speed_3; // Joint_3速度
-        int32_t joint_speed_4; // Joint_4速度
-        int32_t joint_speed_5; // Joint_5速度
-        int32_t joint_speed_6; // Joint_6速度
-        int32_t joint_speed_7; // Joint_7速度
+        int32_t zero_position_1;
+        int32_t zero_position_2;
+        int32_t zero_position_3;
+        int32_t zero_position_4;
+        int32_t zero_position_5;
+        int32_t zero_position_6;
+        int32_t zero_position_7;
     } registers;
 
     struct BitRegister {
@@ -195,6 +178,16 @@ struct MantraDevice {
         }
     }
 
+    // 返回零点位置指针
+    int32_t *zero_pos_ptr(uint8_t id) {
+        if (1 <= id && id <= 7) {
+            auto zero_position_1_ptr = (int16_t *)&registers.zero_position_1;
+            return (int32_t *)(zero_position_1_ptr + 2*(id-1)); // 强制转换为uint32_t指针
+        } else {
+            throw runtime_error("Give a bad id when get zero position!");
+        }
+    }
+
     // 返回当前速度指针
     int16_t *curr_vel_ptr(uint8_t id) {
         if (1 <= id && id <= 7) {
@@ -226,7 +219,7 @@ struct MantraDevice {
 //        auto pos = int32_t (rounds * reduction_ratio[id-1] * cycle_step); // 脉冲数 = 转数/减速比*分辨率
 
         double deg = R2D(rad);
-        auto pos = int32_t (10000*deg);
+        auto pos = int32_t (10000.0*deg);
         *goal_pos_ptr(id) = pos; // 写位置
 
         return true;
@@ -241,16 +234,21 @@ struct MantraDevice {
 
     // 获取目标位置
     double get_goal_position(uint8_t id) {
-        auto cycle = int32_t(*goal_pos_ptr(id));
-        double rounds = (double)(cycle) / cycle_step * reduction_ratio[id-1];
-        return rounds * (2 * double(M_PI));
+        auto pos_raw = int32_t (*goal_pos_ptr(id)); // 原始位置数据, 单位为度, 并放大10000倍
+        double pos = D2R((double)pos_raw / 10000.0f); // 缩小一万倍并转换为弧度
+        return pos;
     }
-
-    // 获取当前位置
+    // 获取当前位置(原始值)
     double get_curr_position(uint8_t id) {
         auto pos_raw = int32_t (*curr_pos_ptr(id)); // 原始位置数据, 单位为度, 并放大10000倍
-        double pos = D2R((double)pos_raw / 10000.0f); // 缩小一千倍并转换为弧度
+        double pos = D2R((double)pos_raw / 10000.0f); // 缩小一万倍并转换为弧度
         return pos;
+    }
+    // 获取零点位置
+    double get_zero_position(uint8_t id) {
+        auto zero_pos_raw = int32_t (*zero_pos_ptr(id)); // 原始位置数据, 单位为度, 并放大10000倍
+        double zero_pos = D2R((double)zero_pos_raw / 10000.0f); // 缩小一万倍并转换为弧度
+        return zero_pos;
     }
     // 获取当前速度
     double get_curr_velocity(uint8_t id) {
@@ -277,6 +275,7 @@ public:
     std::vector<std::string> joint_names_{}; // 关节名称
 
     /// 关节位置相关参数
+    std::array<float, motor_cnt_> zero_pos{}; // 读取零位数据的缓冲区
     std::array<float, motor_cnt_> curr_pos{}; // 读取位置数据的缓冲区
     std::array<float, motor_cnt_> curr_vel{}; // 读取速度数据的缓冲区
     std::array<float, motor_cnt_> curr_eff{}; // 读取力矩数据的缓冲区
@@ -284,9 +283,19 @@ public:
     MotorDriver(string ip, int port, int slaver, const string& joint_prefix); // 构造函数
 
     /// 外部接口
-    // 设置虚拟寄存器中关节位置
+    // 设置虚拟寄存器中目标关节位置,加零位
     bool set_position(uint8_t id, double rad) {
+        rad = rad + zero_pos[id-1]; /// 在零点位置的基础上生成目标位置
         return device_.set_goal_position(id, rad);
+    }
+
+    // 获取虚拟寄存器中当前关节位置,减零位
+    double get_position(uint8_t id) {
+        return device_.get_curr_position(id) - zero_pos[id-1];
+    }
+    // 获取虚拟寄存器中目标关节位置,减零位 FIXME:调试用
+    double get_goal_position(uint8_t id) {
+        return device_.get_goal_position(id) - zero_pos[id-1];
     }
     bool do_write_operation(); // 写控制器寄存器
     bool do_read_operation();  // 读控制器寄存器
@@ -299,7 +308,11 @@ private:
     ros::Subscriber sub_hmi_; // 上位机消息订阅
     bool do_read_flag_  = false; // 读取标志
     bool do_write_flag_ = false; // 写入标志
-    bool set_home_flag_ = false; // 归零标志
+    bool set_home_flag_ = false; // 置零标志
+    bool back_home_flag_ = false; // 回零标志
+    bool reset_flag_ = false; // 复位标志
+    bool power_flag_ = false; // 使能标志
+    bool power_on_flag_ = false; // 使能与否标志
     double last_print_time_ = 0; // 上次状态打印时间
 
     /// 寄存器相关参数
@@ -327,38 +340,35 @@ private:
         return m_master_->modbusWriteData(slaver_, MODBUS_FC_WRITE_MULTIPLE_REGISTERS, addr, len, data);
     }
 
-    // 使能所有关节 写40002的高八位, 第9位控制所有关节
+    // 使能所有关节
     int enable_all_power() {
-        int16_t enable_all = 0x00FF; // 高8位位置1
+        int16_t enable_all = 0x00FF; // 低8位位置1
         return _write_data(hmi_addr_power_, 1, (uint16_t*) &enable_all);
     }
 
-    // 使能所有关节 写40002的高八位, 第9位控制所有关节
+    // 去使能所有关节
     int disable_all_power() {
-        int16_t disable_all = 0x0000; // 高8位置0
+        int16_t disable_all = 0x0000; // 低8位置0
         return _write_data(hmi_addr_power_, 1, (uint16_t*) &disable_all);
     }
 
-    // 使能所有关节 写40002的高八位, 第9位控制所有关节
-    int reset_all_motor() {
-        int16_t reset_all = 0x7F00; // 第1位置1
+    // 复位所有关节
+    int reset_all_joints() {
+        int16_t reset_all = 0xFF00; // 高8位置1
+
+        for (int id = 1; id <= motor_cnt_; id++) { // 确保复位后目标位置与当前位置相同 NOTE:必须放在写目标关节位置寄存器之前
+            set_position(id, curr_pos[id-1]);
+        }
+
         return _write_data(hmi_addr_reset_, 1, (uint16_t*) &reset_all);
     }
 
-    // 使能所有关节 写40002的高八位, 第9位控制所有关节
+    // 设置为零位
     int set_all_home() {
-        int16_t set_all = 0x00FF; // 第9位置1
-        return _write_data(hmi_addr_home_, 1, (uint16_t*) &set_all);
-    }
-
-    int back_all_home() {
-        int16_t back_all = 0x8000; // 第1位置1
-        return _write_data(hmi_addr_back_, 1, (uint16_t*) &back_all);
-    }
-
-    int back_all_home_done() {
-        int16_t back_all = 0x0000; // 第1位置1
-        return _write_data(hmi_addr_back_, 1, (uint16_t*) &back_all);
+        int16_t set_all = 0x00FF; // 低8位置1
+//        std::fill(curr_pos.begin(), curr_pos.end(), 0); // 当前位置缓冲区置零
+        int ret =  _write_data(hmi_addr_home_, 1, (uint16_t*) &set_all);
+        return ret;
     }
 
     void hmi_callback(const std_msgs::Int32MultiArray::ConstPtr& msg);

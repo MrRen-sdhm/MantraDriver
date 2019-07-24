@@ -25,24 +25,28 @@ int main(int argc, char*argv[]){
     action_server = new ActionServer(*traj_follower, *motorDriver, "mantra/follow_joint_trajectory", max_velocity); // Action服务器
 
     // 关节状态发布定时器
-//    rt_pub.start();
+    rt_pub.start();
     // 开启Action服务器
-//    action_server->start();
+    action_server->start();
 
     ros::AsyncSpinner spinner(1);
     spinner.start();
 
-    ros::Rate loop_rate(50); // 100HZ
+    ros::Rate loop_rate(100); // 100HZ
+
+    uint32_t cnt_ = 0;
     while(ros::ok())
     {
+//        printf("%d\n", cnt_++); // 运行速度测试
+
         // 读取关节驱动器中关节位置
         motorDriver->do_read_operation();
         // 读当前关节位置, 并写目标位置(轨迹)
-//        traj_follower->spinOnce();
+        traj_follower->spinOnce();
         // 目标位置发送给关节驱动器
-        motorDriver->do_write_operation();
+        motorDriver->do_write_operation(); // FIXME:读取非连续区域耗时较长, 无法达到100HZ, 实际60HZ左右
         // 更新轨迹执行状态
-//        action_server->spinOnce();
+        action_server->spinOnce();
 
         loop_rate.sleep();
         ros::spinOnce();

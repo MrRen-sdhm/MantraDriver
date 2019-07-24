@@ -60,7 +60,7 @@ struct Trajectory {
             if (i > 0) {
                 printf(",");
             }
-            printf("%.2f", R2D(path_tol.positions[i]));
+            printf("%.2f(%.2f)", path_tol.positions[i], R2D(path_tol.positions[i]));
         }
         printf("]\n");
 
@@ -69,7 +69,7 @@ struct Trajectory {
             if (i > 0) {
                 printf(",");
             }
-            printf("%.2f", R2D(goal_tol.positions[i]));
+            printf("%.2f(%.2f)", goal_tol.positions[i], R2D(goal_tol.positions[i]));
         }
         printf("]\n");
 
@@ -80,7 +80,7 @@ struct Trajectory {
             if (i > 0) {
                 printf(",");
             }
-            printf("%.2f", R2D(p.positions[i]));
+            printf("%.2f(%.2f)", p.positions[i], R2D(p.positions[i]));
         }
         printf("]\n");
 
@@ -90,7 +90,7 @@ struct Trajectory {
             if (i > 0) {
                 printf(",");
             }
-            printf("%.2f", R2D(p1.positions[i]));
+            printf("%.2f(%.2f)", p1.positions[i], R2D(p1.positions[i]));
         }
         printf("]\n");
     }
