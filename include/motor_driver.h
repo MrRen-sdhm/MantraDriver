@@ -96,7 +96,7 @@ struct MantraDevice {
         int16_t err_code_6;
         int16_t err_code_7;
         // 2字节
-        int16_t motor_status; // 电机状态
+        int16_t contrller_status; // 控制器状态
         // 28字节
         int32_t zero_position_1;
         int32_t zero_position_2;
@@ -273,6 +273,8 @@ class MotorDriver {
 public:
     static const uint8_t motor_cnt_ = 7; // 电机数
     std::vector<std::string> joint_names_{}; // 关节名称
+    bool power_on_flag_ = false; // 电机使能标志
+    bool init_ready_flag_ = false; // 控制器初始化完成标志
 
     /// 关节位置相关参数
     std::array<float, motor_cnt_> zero_pos{}; // 读取零位数据的缓冲区
@@ -301,19 +303,20 @@ public:
     bool do_read_operation();  // 读控制器寄存器
 
 private:
-    /// modbus相关参数
-    ModbusAdapter *m_master_; // modbus服务器
-    int slaver_; // modbus客户端id
-    ros::NodeHandle nh_; // ROS节点句柄
-    ros::Subscriber sub_hmi_; // 上位机消息订阅
-    bool do_read_flag_  = false; // 读取标志
-    bool do_write_flag_ = false; // 写入标志
-    bool set_home_flag_ = false; // 置零标志
-    bool back_home_flag_ = false; // 回零标志
-    bool reset_flag_ = false; // 复位标志
-    bool power_flag_ = false; // 使能标志
-    bool power_on_flag_ = false; // 使能与否标志
+    /// motor_driver参数
     double last_print_time_ = 0; // 上次状态打印时间
+    /// modbus相关参数
+    ModbusAdapter *m_master_;        // modbus服务器
+    int slaver_;                     // modbus客户端id
+    ros::NodeHandle nh_;             // ROS节点句柄
+    ros::Subscriber sub_hmi_;        // 上位机消息订阅
+    bool do_read_flag_  = false;     // 读取标志
+    bool do_write_flag_ = false;     // 写入标志
+
+    /// HMI控制标志
+    bool set_home_ctrl_flag_ = false; // 置零控制标志
+    bool reset_ctrl_flag_ = false;    // 复位控制标志
+    bool power_ctrl_flag_ = false;    // 使能控制标志
 
     /// 寄存器相关参数
     MantraDevice device_; // 机械臂

@@ -26,20 +26,20 @@ void ActionServer::onGoal(GoalHandle gh) {
     running_ = true;
     Result res;
     res.error_code = -100;
-    res.error_string = "set goal failed";
+    res.error_string = "set goal failed.";
 
     printf("\033[0;36m[INFO] Action server received a new goal.\033[0m\n");
 
-    if (!validate(gh, res)) {
+    if (!validate(gh, res)) { // 机器人状态或轨迹存在问题
         ROS_ERROR("Goal error: %s", res.error_string.c_str());
         gh.setRejected(res, res.error_string);
-    }
-
-    int ret = follower_.set_goal(gh); /// 开始轨迹跟踪
-    if (ret) {
-        gh.setAccepted();
-    } else {
-        gh.setRejected(res, res.error_string);
+    } else { // 无错误, 开始轨迹跟踪
+        int ret = follower_.set_goal(gh); /// 开始轨迹跟踪
+        if (ret) {
+            gh.setAccepted();
+        } else {
+            gh.setRejected(res, res.error_string);
+        }
     }
     curr_gh_ = gh; // 获取目标句柄
 }
@@ -74,6 +74,10 @@ bool ActionServer::validate(GoalHandle &gh, Result &res) {
 
 // TODO:检查机械臂状态
 bool ActionServer::validateState(GoalHandle &gh, Result &res) {
+    if (!driver_.power_on_flag_) {
+        ROS_ERROR("Robot is not power on!");
+        return false;
+    } else return true;
 //    switch (state_) {
 //        case RobotState::EmergencyStopped:
 //            res.error_string = "Robot is emergency stopped";
@@ -94,7 +98,6 @@ bool ActionServer::validateState(GoalHandle &gh, Result &res) {
 //            res.error_string = "Undefined state";
 //            return false;
 //    }
-        return true;
 }
 
 // 检查可用关节
@@ -114,6 +117,7 @@ bool ActionServer::validateJoints(GoalHandle &gh, Result &res) {
     res.error_string += "\nFound: ";
     std::for_each(joint_set_.begin(), joint_set_.end(),
                   [&res](std::string joint) { res.error_string += joint + ", "; });
+    printf("joints\n");
     return false;
 }
 
@@ -130,12 +134,14 @@ bool ActionServer::validateTrajectory(GoalHandle &gh, Result &res) {
         if (point.velocities.size() != joint_names_.size()) {
             res.error_code = Result::INVALID_GOAL;
             res.error_string = "Received a goal with an invalid number of velocities";
+            ROS_ERROR("Received a goal with an invalid number of velocities");
             return false;
         }
 
         if (point.positions.size() != joint_names_.size()) {
             res.error_code = Result::INVALID_GOAL;
             res.error_string = "Received a goal with an invalid number of positions";
+            ROS_ERROR("Received a goal with an invalid number of positions");
             return false;
         }
 
@@ -148,12 +154,14 @@ bool ActionServer::validateTrajectory(GoalHandle &gh, Result &res) {
                 res.error_string =
                         "Received a goal with velocities that are higher than max_velocity_ " +
                         std::to_string(max_velocity_);
+                ROS_ERROR("Received a goal with velocities that are higher than max_velocity");
                 return false;
             }
         }
         for (auto const &position : point.positions) {
             if (!std::isfinite(position)) {
                 res.error_string = "Received a goal with infinities or NaNs in positions";
+                ROS_ERROR("Received a goal with infinities or NaNs in positions");
                 return false;
             }
         }

@@ -7,6 +7,8 @@
 #include "action_server.h"
 #include "robot_state_publisher.h"
 
+// zero_position [ 10.2203 -0.1858 0.0034 0.9514 -0.1892 8.6554 -6.2250 ] [-10.6447 0.1948 54.5139 -10.8382 495.9174 -356.6637 -0.0034 ]
+
 using namespace Mantra;
 
 int main(int argc, char*argv[]){
