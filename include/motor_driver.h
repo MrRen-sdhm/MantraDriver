@@ -164,7 +164,7 @@ struct MantraDevice {
             auto target_position_1_ptr = (int16_t *) &registers.target_position_1;
             return (int32_t *)(target_position_1_ptr + 8*(id-1)); // 强制转换为uint32_t指针
         } else {
-            throw runtime_error("Give a bad id when get goal position!");
+            throw runtime_error("\033[0;31mGiven a bad id when get goal position!\033[0m\n");
         }
     }
 
@@ -174,7 +174,7 @@ struct MantraDevice {
             auto position_1_ptr = (int16_t *)&registers.position_value_1;
             return (int32_t *)(position_1_ptr + 8*(id-1)); // 强制转换为uint32_t指针
         } else {
-            throw runtime_error("Give a bad id when get current position!");
+            throw runtime_error("\033[0;31mGiven a bad id when get current position!\033[0m\n");
         }
     }
 
@@ -184,7 +184,7 @@ struct MantraDevice {
             auto zero_position_1_ptr = (int16_t *)&registers.zero_position_1;
             return (int32_t *)(zero_position_1_ptr + 2*(id-1)); // 强制转换为uint32_t指针
         } else {
-            throw runtime_error("Give a bad id when get zero position!");
+            throw runtime_error("\033[0;31mGiven a bad id when get zero position!\033[0m\n");
         }
     }
 
@@ -194,7 +194,7 @@ struct MantraDevice {
             auto position_1_ptr = (int16_t *)&registers.velocity_value_1;
             return (int16_t *)(position_1_ptr + 8*(id-1)); // 强制转换为uint32_t指针
         } else {
-            throw runtime_error("Give a bad id when get goal velocity!");
+            throw runtime_error("\033[0;31mGiven a bad id when get goal velocity!\033[0m\n");
         }
     }
 
@@ -204,7 +204,7 @@ struct MantraDevice {
             auto position_1_ptr = (int16_t *)&registers.torque_value_1;
             return (int16_t *)(position_1_ptr + 8*(id-1)); // 强制转换为uint32_t指针
         } else {
-            throw runtime_error("Give a bad id when get goal velocity!");
+            throw runtime_error("\033[0;31mGiven a bad id when get goal velocity!\033[0m\n");
         }
     }
 

@@ -340,9 +340,10 @@ public:
         return true;
     }
 
-    bool cancle_by_client() {
+    bool cancel_by_client() {
         printf("\033[0;34m[TRAJ] Goal cancelled by client.\033[0m\n");
-        runing_ = false;
+        runing_ = false; // 取消轨迹跟踪
+        state_ = State::STARTING; // 轨迹跟踪设为起始状态
     }
 
 //    // 由主循环调用, 取消当前操作

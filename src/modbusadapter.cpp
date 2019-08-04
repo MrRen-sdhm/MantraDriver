@@ -92,14 +92,14 @@ int ModbusAdapter::modbusConnectTCP(const string ip, int port, int timeOut)
 
     if(m_modbus == NULL){
         cerr<<  "Connection failed. Unable to create the libmodbus context\n";
-        throw runtime_error("Unable to create the libmodbus context!");
+        throw runtime_error("\033[0;31mUnable to create the libmodbus context!\033[0m\n");
     }
     else if(m_modbus && modbus_connect(m_modbus) == -1) {
         modbus_free(m_modbus);
         cerr << "Connection to IP: " << ip << ":" << port << " failed. Could not connect to TCP port\n";
         m_connected = false;
         line += " Failed\n";
-        throw runtime_error("Could not connect to TCP port!");
+        throw runtime_error("\033[0;31mCould not connect to TCP port!\033[0m\n");
     }
     else {
         //error recovery mode
@@ -228,10 +228,12 @@ int ModbusAdapter::modbusReadHoldReg(int slave, int startAddress, int noOfItems,
         if(ret < 0) {
             line = string("Error: ") +  libmodbus_strerror(errno);
             cerr <<  "Read Data failed. " << line << endl;
+            throw runtime_error("\033[0;31mRead Data failed.\033[0m\n");
         }
         else {
             line = string("Number of registers returned does not match number of registers requested!. Error: ") + libmodbus_strerror(errno);
             cerr <<  "Read Data failed. " << line << endl;
+            throw runtime_error("\033[0;31mRead Data failed.\033[0m\n");
         }
         modbus_flush(m_modbus); //flush data
 
@@ -307,10 +309,12 @@ int ModbusAdapter::modbusWriteData(int slave, int functionCode, int startAddress
         if(ret < 0) {
             line = string("Error: ") +  libmodbus_strerror(errno);
             cerr <<  "Write Data failed. " << line << endl;
+            throw runtime_error("\033[0;31mWrite Data failed.\033[0m\n");
         }
         else {
             line = string("Number of registers returned does not match number of registers requested!. Error: ") + libmodbus_strerror(errno);
             cerr <<  "Write Data failed. " << line << endl;
+            throw runtime_error("\033[0;31mWrite Data failed.\033[0m\n");
         }
         modbus_flush(m_modbus); //flush data
         return -1;

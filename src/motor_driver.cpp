@@ -12,11 +12,11 @@ MotorDriver::MotorDriver(string ip, const int port, int slaver, const string& jo
 
     // 读取所有控制器寄存器, 并存入MantraDevice Register
     if (!m_master_->modbusReadHoldReg(slaver_, hmi_addr_head_, ctrller_reg_len_, (uint16_t *) device_.memory())) {
-        throw runtime_error("Fail to read all register from controller!");
+        throw runtime_error("\033[0;31mFail to read all register from controller!\033[0m\n");
     }
     // 读取位运算寄存器, 调试用
     if (!m_master_->modbusReadHoldReg(slaver_, hmi_bit_addr_head_, bit_reg_len_, (uint16_t *) device_.bit_memory())) {
-        throw runtime_error("Fail to read all register from controller!");
+        throw runtime_error("\033[0;31mFail to read all register from controller!\033[0m\n");
     }
 
     // 关节名称
@@ -96,12 +96,12 @@ bool MotorDriver::do_read_operation() {
             for (int id = 1; id <= motor_cnt_; id++) {
                 // 当前位置与目标位置差值过大, 说明控制器中目标位置存在错误, 须重启控制器
                 if (std::abs(device_.get_goal_position(id) - device_.get_curr_position(id)) > 0.001) {
-                    throw runtime_error("Goal positions is not equal to current positions!\nPlease restart the controller!");
+                    throw runtime_error("\033[0;31mGoal positions is not equal to current positions!\nPlease restart the controller!\033[0m\n");
                 }
             }
             // 判断零位寄存器是否有值, 无值便发出警告, 须设置零位
             if (std::abs(std::accumulate(zero_pos.begin(), zero_pos.end(), 0.0f)) < 0.001) {
-                ROS_ERROR("Zero position registers are empty now, please set the zero positions now!");
+                ROS_ERROR("Zero position registers are empty now, please set the zero positions through hmi!");
             }
         }
     }

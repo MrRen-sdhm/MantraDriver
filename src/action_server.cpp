@@ -54,12 +54,21 @@ void ActionServer::spinOnce() {
         running_ = false; // Action完成, 恢复初始状态
         follower_.result_.error_string = "PREPARE"; // 轨迹跟踪进入准备状态
     }
+
+    if (!driver_.power_on_flag_ && running_) { // 运行时关节非使能, 目前作急停使用
+        running_ = false; // 结束此次Action
+        follower_.cancel_by_client(); // 客户端取消轨迹跟踪, 这里为HMI
+
+        res.error_code = -100;
+        res.error_string = "Goal cancelled by hmi.";
+        curr_gh_.setCanceled(res);
+    }
 }
 
 // 取消Action动作
 void ActionServer::onCancel(GoalHandle gh) {
     running_ = false; // 结束此次Action
-    follower_.cancle_by_client(); // 客户端取消轨迹跟踪, 即PC端
+    follower_.cancel_by_client(); // 客户端取消轨迹跟踪, 即PC端
 
     Result res;
     res.error_code = -100;
