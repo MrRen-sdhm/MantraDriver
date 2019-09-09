@@ -79,16 +79,17 @@ bool MotorDriver::do_read_operation() {
     /// 一次性读取连续寄存器更省时
     m_master_->modbusReadHoldReg(slaver_, hmi_addr_head_, ctrller_reg_len_, (uint16_t *) device_.memory());
 
-    // 读关节位置
+    // 获取当前关节位置
     for (int id = 1; id <= motor_cnt_; id++) {
         curr_pos[id-1] = get_position(id); // 获取当前位置(实际值), 保存到位置缓冲区
     }
 
+    // 获取当前零点位置
     for (int id = 1; id <= motor_cnt_; id++) { // 获取零点位置(寄存器值), 零点在重新设置零点时才会变化, 但此处持续获取确保无误
         zero_pos[id-1] = device_.get_zero_position(id);
     }
 
-    if (!init_ready_flag_ ) { // 判断是否初始化完毕
+    if (!init_ready_flag_) { // 判断是否初始化完毕
         device_.registers.contrller_status == 1 ? // 控制器初始化完毕
             (init_ready_flag_ = true) : printf("[INFO] Controller is initializing...\n");
         if (init_ready_flag_) { // 驱动器已初始化完毕
@@ -133,13 +134,13 @@ bool MotorDriver::do_read_operation() {
 //        curr_eff[id-1] = device_.get_curr_effort(id); // 当前位置保存到位置缓冲区
 //    }
 
-    print_position();
+    print_position(1); // 1s打印一次
 
     do_read_flag_ = false;
     return true;
 }
 
-// HMI msg前7位为关节位置(单位rad, 100倍), 第8位为回零标志
+// HMI msg 0:使能 1:复位 2:置零 3:急停
 void MotorDriver::hmi_callback(const std_msgs::Int32MultiArray::ConstPtr& msg)
 {
 //    printf("I heard: [ ");
@@ -152,64 +153,68 @@ void MotorDriver::hmi_callback(const std_msgs::Int32MultiArray::ConstPtr& msg)
     if (msg->data[2] == 1) set_home_ctrl_flag_ = true;
     if (msg->data[0] == 1) power_ctrl_flag_ = true;
     if (msg->data[1] == 1) reset_ctrl_flag_ = true;
+    if (msg->data[3] == 1) emergency_stop_flag_ = true;
+//    if (msg->data[3] == 1) printf("Emergency Stop !!!!!!!!!!!!!!!!!!!!!!!!!!!!\n");
 
 }
 
-void MotorDriver::print_position() {
-    if (ros::Time::now().toSec() - last_print_time_ > 1) { // 单位: s
+void MotorDriver::print_position(uint8_t time) {
+    if (ros::Time::now().toSec() - last_print_time_ > time) { // 单位: s
         last_print_time_ = ros::Time::now().toSec();
         // 获取零位关节角度
         cout << endl << "zero_position     [ ";
         for (int i = 1; i <= motor_cnt_; i++) {
-            printf("%0.4f ", zero_pos[i-1]);
+            printf("%0.3f ", zero_pos[i-1]);
         }
-        cout << "] [";
+        cout << "] rad [ ";
         for (int i = 1; i <= motor_cnt_; i++) {
-            printf("%0.4f ", R2D(zero_pos[i-1]));
+            printf("%0.3f ", R2D(zero_pos[i-1]));
         }
-        cout << "]" << endl;
+        cout << "] deg" << endl;
+
         // 获取目标关节角度
         cout << "goal_position     [ ";
         for (int i = 1; i <= motor_cnt_; i++) {
-            printf("%0.4f ", get_goal_position(i));
+            printf("%0.3f ", get_goal_position(i));
         }
-        cout << "] [";
+        cout << "] rad [ ";
         for (int i = 1; i <= motor_cnt_; i++) {
-            printf("%0.4f ", R2D(get_goal_position(i)));
+            printf("%0.3f ", R2D(get_goal_position(i)));
         }
-        cout << "]" << endl;
+        cout << "] deg" << endl;
+
         // 获取目标关节角度, 原始值(寄存器值)
         cout << "goal_position_reg [ ";
         for (int i = 1; i <= motor_cnt_; i++) {
-            printf("%0.4f ", device_.get_goal_position(i));
+            printf("%0.3f ", device_.get_goal_position(i));
         }
-        cout << "] [";
+        cout << "] rad [ ";
         for (int i = 1; i <= motor_cnt_; i++) {
-            printf("%0.4f ", R2D(device_.get_goal_position(i)));
+            printf("%0.3f ", R2D(device_.get_goal_position(i)));
         }
-        cout << "]" << endl;
+        cout << "] deg" << endl;
 
         // 获取当前关节角度
         cout << "curr_position     [ ";
         for (int i = 1; i <= motor_cnt_; i++) {
-            printf("%0.4f ", get_position(i));
+            printf("%0.3f ", get_position(i));
         }
-        cout << "] [";
+        cout << "] rad [ ";
         for (int i = 1; i <= motor_cnt_; i++) {
-            printf("%0.4f ", R2D(get_position(i)));
+            printf("%0.3f ", R2D(get_position(i)));
         }
-        cout << "]" << endl;
+        cout << "] deg" << endl;
 
         // 获取当前关节角度, 原始值(寄存器值)
         cout << "curr_position_reg [ ";
         for (int i = 1; i <= motor_cnt_; i++) {
-            printf("%0.4f ", device_.get_curr_position(i));
+            printf("%0.3f ", device_.get_curr_position(i));
         }
-        cout << "] [";
+        cout << "] rad [ ";
         for (int i = 1; i <= motor_cnt_; i++) {
-            printf("%0.4f ", R2D(device_.get_curr_position(i)));
+            printf("%0.3f ", R2D(device_.get_curr_position(i)));
         }
-        cout << "]" << endl;
+        cout << "] deg" << endl;
     }
 }
 

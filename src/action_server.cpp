@@ -23,7 +23,9 @@ void ActionServer::start() {
 
 // 接收Action目标的回调函数, 在收到客户端请求时回调
 void ActionServer::onGoal(GoalHandle gh) {
-    running_ = true;
+    running_ = true; // 开始Action服务
+    driver_.emergency_stop_flag_ = false; // 清急停标志
+
     Result res;
     res.error_code = -100;
     res.error_string = "set goal failed.";
@@ -47,33 +49,67 @@ void ActionServer::onGoal(GoalHandle gh) {
 // 轨迹执行状态更新
 void ActionServer::spinOnce() {
     Result res;
-    if (follower_.result_.error_string == "SUCCESS" && running_) { // 轨迹跟踪已执行完成, Action仍未完成
-        printf("\033[0;36m[TRAJ] Trajectory executed successfully!\033[0m\n");
-        res.error_code = Result::SUCCESSFUL;
-        curr_gh_.setSucceeded(res);
-        running_ = false; // Action完成, 恢复初始状态
-        follower_.result_.error_string = "PREPARE"; // 轨迹跟踪进入准备状态
-    }
+    if (running_) {
+        if (follower_.follow_done_) { // 轨迹跟踪已执行完成, Action仍未完成
+            running_ = false; // 结束此次Action
+            printf("\033[0;36m[TRAJ] Trajectory executed successfully!\033[0m\n");
+            res.error_code = Result::SUCCESSFUL;
+            curr_gh_.setSucceeded(res);
+            running_ = false; // Action完成, 恢复初始状态
+            follower_.follow_done_ = false; // 轨迹跟踪进入准备状态
+        }
 
-    if (!driver_.power_on_flag_ && running_) { // 运行时关节非使能, 目前作急停使用
-        running_ = false; // 结束此次Action
-        follower_.cancel_by_client(); // 客户端取消轨迹跟踪, 这里为HMI
+        if (!driver_.power_on_flag_) { // 运行时关节非使能, 目前作急停使用
+            running_ = false; // 结束此次Action
+            follower_.cancel(); // 客户端取消轨迹跟踪, 这里为HMI
 
-        res.error_code = -100;
-        res.error_string = "Goal cancelled by hmi.";
-        curr_gh_.setCanceled(res);
+            printf("\033[0;32m[TRAJ] Goal cancelled by hmi poweroff.\033[0m\n");
+            res.error_code = -100;
+            res.error_string = "Goal cancelled by hmi poweroff.";
+            curr_gh_.setCanceled(res);
+        }
+
+        if (driver_.emergency_stop_flag_) { // hmi急停
+            running_ = false; // 结束此次Action
+            follower_.cancel(); // 客户端取消轨迹跟踪, 这里为HMI
+
+            printf("\033[0;32m[TRAJ] Goal cancelled by hmi emergency stop.\033[0m\n");
+            res.error_code = -100;
+            res.error_string = "Goal cancelled by hmi emergency stop.";
+            curr_gh_.setCanceled(res);
+
+            sleep(1); // 会接收到多次急停指令, 过一会再清标志
+            driver_.emergency_stop_flag_ = false;
+        }
+
+        if (follower_.path_tolerance_violated) { // 轨迹执行超过容差
+            running_ = false; // 结束此次Action
+            res.error_code = Result::PATH_TOLERANCE_VIOLATED;
+            res.error_string = "PATH_TOLERANCE_VIOLATED";
+            curr_gh_.setCanceled(res);
+            follower_.path_tolerance_violated = false;
+        }
+
+        if (follower_.path_tolerance_violated) { // 终点位置超过容差
+            running_ = false; // 结束此次Action
+            res.error_code = Result::GOAL_TOLERANCE_VIOLATED;
+            res.error_string = "GOAL_TOLERANCE_VIOLATED";
+            curr_gh_.setCanceled(res);
+            follower_.goal_tolerance_violated = false;
+        }
     }
 }
 
 // 取消Action动作
 void ActionServer::onCancel(GoalHandle gh) {
     running_ = false; // 结束此次Action
-    follower_.cancel_by_client(); // 客户端取消轨迹跟踪, 即PC端
+    follower_.cancel(); // 客户端取消轨迹跟踪, 即PC端moveit
 
     Result res;
     res.error_code = -100;
-    res.error_string = "Goal cancelled by client.";
+    res.error_string = "Goal cancelled by moveit client.";
     gh.setCanceled(res);
+    printf("\033[0;32m\n[TRAJ] Goal cancelled by moveit client.\033[0m\n");
 }
 
 // 检查机械臂

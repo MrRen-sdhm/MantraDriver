@@ -20,8 +20,8 @@
 
 #include "modbusadapter.h"
 
-#define R2D(rad) ((rad) / (float)M_PI * 180)
-#define D2R(deg) ((deg) * (float)M_PI / 180)
+#define R2D(rad) ((double)(rad) / (double)M_PI * 180.0f)
+#define D2R(deg) ((double)(deg) * (double)M_PI / 180.0f)
 
 using namespace std::chrono;
 
@@ -276,11 +276,17 @@ public:
     bool power_on_flag_ = false; // 电机使能标志
     bool init_ready_flag_ = false; // 控制器初始化完成标志
 
+    /// HMI控制标志
+    bool set_home_ctrl_flag_ = false;  // 置零控制标志
+    bool reset_ctrl_flag_ = false;     // 复位控制标志
+    bool power_ctrl_flag_ = false;     // 使能控制标志
+    bool emergency_stop_flag_ = false; // 急停标志
+
     /// 关节位置相关参数
-    std::array<float, motor_cnt_> zero_pos{}; // 读取零位数据的缓冲区
-    std::array<float, motor_cnt_> curr_pos{}; // 读取位置数据的缓冲区
-    std::array<float, motor_cnt_> curr_vel{}; // 读取速度数据的缓冲区
-    std::array<float, motor_cnt_> curr_eff{}; // 读取力矩数据的缓冲区
+    std::array<double, motor_cnt_> zero_pos{}; // 读取零位数据的缓冲区
+    std::array<double, motor_cnt_> curr_pos{}; // 读取位置数据的缓冲区
+    std::array<double, motor_cnt_> curr_vel{}; // 读取速度数据的缓冲区
+    std::array<double, motor_cnt_> curr_eff{}; // 读取力矩数据的缓冲区
 
     MotorDriver(string ip, int port, int slaver, const string& joint_prefix); // 构造函数
 
@@ -302,6 +308,8 @@ public:
     bool do_write_operation(); // 写控制器寄存器
     bool do_read_operation();  // 读控制器寄存器
 
+    void print_position(uint8_t time);
+
 private:
     /// motor_driver参数
     double last_print_time_ = 0; // 上次状态打印时间
@@ -312,11 +320,6 @@ private:
     ros::Subscriber sub_hmi_;        // 上位机消息订阅
     bool do_read_flag_  = false;     // 读取标志
     bool do_write_flag_ = false;     // 写入标志
-
-    /// HMI控制标志
-    bool set_home_ctrl_flag_ = false; // 置零控制标志
-    bool reset_ctrl_flag_ = false;    // 复位控制标志
-    bool power_ctrl_flag_ = false;    // 使能控制标志
 
     /// 寄存器相关参数
     MantraDevice device_; // 机械臂
@@ -375,8 +378,6 @@ private:
     }
 
     void hmi_callback(const std_msgs::Int32MultiArray::ConstPtr& msg);
-
-    void print_position();
 };
 
 }

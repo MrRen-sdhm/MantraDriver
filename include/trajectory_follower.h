@@ -25,13 +25,6 @@ using namespace std::chrono;
 
 namespace Mantra {
 
-enum class Result_My {
-    NONE,      // 未知
-    SUCCESS,   // 成功
-    FAILED,    // 失败
-    CANCLE,    // 取消
-};
-
 class TrajectoryFollower {
 
 public:
@@ -46,12 +39,11 @@ public:
     static const int joint_count_ = MotorDriver::motor_cnt_;
     static const int max_traj_points_ = 200;
 
-    // 两个轨迹点之间的最大位移
-    const float max_delta_position_ = 30 * float(M_PI) / 180;
+    const float path_tolerance_ = 5 * float(M_PI) / 180; // 各关节轨迹跟踪位置容差 3度
+    const float goal_tolerance_ = 0.1 * float(M_PI) / 180; // 各关节目标位置容差 0.1度
 
-    // 默认容差值, 小于0表示无限制
-    JointTolerance <joint_count_> default_path_tol_{};
-    JointTolerance <joint_count_> default_goal_tol_{};
+    // 轨迹执行时间容差
+    const uint32_t time_tolerance_ = 1000000000; // 1秒
 
     // 当前执行的轨迹
     Trajectory <joint_count_, max_traj_points_> current_trajectory_;
@@ -64,19 +56,22 @@ public:
     /* 以下变量同时在中断和主函数中使用 */
     volatile State state_ = State::STARTING; // 当前工作状态
     volatile bool runing_ = false;           // 是否跟随轨迹
-    volatile bool new_read_ = false;         // 有新的反馈数据
-    volatile bool new_result_ = false;       // 有新的结果
+    volatile bool follow_done_ = false;      // 轨迹跟踪完成标志
+    volatile bool write_once_ = false;       // 目标位置写入标志
+    volatile bool last_point_flag_ = false;   // 最后一个轨迹点写入完成标志
+    volatile bool path_tolerance_violated = false; // 轨迹执行超过容差标志
+    volatile bool goal_tolerance_violated = false; // 终点位置超过容差标志
 
-    TrajectoryPoint <joint_count_> desired_point_{};       // 当前设定的轨迹点
-    TrajectoryPoint <joint_count_> actual_point_{};        // 当前实际的轨迹点
-    TrajectoryPoint <joint_count_> error_point_{};         // 当前实际的轨迹点
+    TrajectoryPoint <joint_count_> desired_point_{}; // 当前设定的轨迹点
+    TrajectoryPoint <joint_count_> actual_point_{};  // 当前实际的轨迹点
+    TrajectoryPoint <joint_count_> error_point_{};   // 当前实际的轨迹点
 
     /* 轨迹跟踪状态 */
     TimePoint time_start_; // 轨迹跟踪的开始时间, 单片机时间
     size_t next_point_index_{}; // 当前插值的下一个轨迹点
     double last_print_time_ = 0; // 轨迹执行状态打印时间
 
-    control_msgs::FollowJointTrajectoryResult result_; // 轨迹执行结果
+    Result result_; // 轨迹执行结果
 
     // 线性插值算法
     static int linear_interpolate(const TrajectoryPoint <joint_count_> &begin, const TrajectoryPoint <joint_count_> &end,
@@ -94,55 +89,41 @@ public:
         return 0;
     }
 
-//    void on_emergency_stop_changed(bool value) override {
-//        if (value) {
-//            arm_.enable_motor(0, 0);
-//            InterruptLock lock;
-//            std::unique_lock<InterruptLock> lock_guard(lock);
-//            enable_motor_ = false;
-//            desired_point_ = actual_point_;
-//            desired_point_.time_nsec = 0;
-//            lock_guard.unlock();
-//            _finish_with_error(control_msgs::FollowJointTrajectoryResult::PATH_TOLERANCE_VIOLATED,
-//                               "emergency_stop_");
-//
-//            printf("%s: emergency_stop_!!!\n", name_);
-//        } else {
-//            InterruptLock lock;
-//            std::unique_lock<InterruptLock> lock_guard(lock);
-//            desired_point_ = actual_point_;
-//            desired_point_.time_nsec = 0;
-//            lock_guard.unlock();
-//
-//            printf("%s: emergency_stop_ released\n", name_);
-//        }
-//    }
-
     // 设置关节电机目标位姿
-    void _set_motor_positions(std::array<float, joint_count_> &positions) {
+    void set_motor_positions(std::array<double, joint_count_> &positions) {
         for (int id = 1; id <= joint_count_; id++) {
             motorDriver_.set_position(id, positions[id-1]);
         }
     }
 
     // 对比actual与desired, 计算误差error_point_
-    void _compute_error(const TrajectoryPoint <joint_count_> &desired, const TrajectoryPoint <joint_count_> &actual,
+    void compute_error(const TrajectoryPoint <joint_count_> &desired, const TrajectoryPoint <joint_count_> &actual,
                         TrajectoryPoint <joint_count_> &) {
         for (int i = 0; i < joint_count_; i++) {
             float error = desired.positions[i] - actual.positions[i];
             error_point_.positions[i] = error;
         }
         error_point_.time_nsec = std::max(desired.time_nsec, actual.time_nsec);
+
+        // 获取零位关节角度
+        cout << endl << "position_error    [ ";
+        for (int i = 1; i <= joint_count_; i++) {
+            printf("%0.5f ", error_point_.positions[i-1]);
+        }
+        cout << "] rad [ ";
+        for (int i = 1; i <= joint_count_; i++) {
+            printf("%0.5f ", R2D(error_point_.positions[i-1]));
+        }
+        cout << "] deg" << endl;
     }
 
     // 检查误差是否在容许范围内
-    static bool _is_error_in_tolerance(const TrajectoryPoint <joint_count_> &error,
-                                       const JointTolerance <joint_count_> &tolerance, bool display = false) {
+    bool is_error_in_tolerance(const TrajectoryPoint <joint_count_> &error, float tolerance, bool display = false) {
         for (int i = 0; i < joint_count_; i++) {
-            if (std::abs(error.positions[i]) > tolerance.positions[i]) {
+            if (std::abs(error.positions[i]) > tolerance) {
                 if (display) {
-                    printf("joint %d: abs(error %f) > tol %f\n", i + 1, R2D(std::abs(error.positions[i])),
-                           R2D(tolerance.positions[i]));
+                    printf("joint %d: abs(error %f (%f deg)) > tol %f (%f deg)\n", i + 1, std::abs(error.positions[i]),
+                            R2D(std::abs(error.positions[i])), tolerance, R2D(path_tolerance_));
                 }
                 return false;
             }
@@ -150,76 +131,43 @@ public:
         return true;
     }
 
-    // 以给定错误停止任务执行
-    void _finish_with_error(int32_t error_code, const char *error_string) {
-        if (runing_) {
-            // 记录执行结果
-            result_.error_code = error_code;
-            result_.error_string = error_string;
-            new_result_ = true;
-
-            // 关节保持当前实际位置
-            runing_ = false;
-        }
-    }
-
     // 检查位置与时间容差, 若超出容差则中止执行, 若达到目标则完成执行
-//    void _check_tolerance() {
-//        uint32_t now = Time::now().nsec;
-//        // 计算容差
-//        _compute_error(desired_point_, actual_point_, error_point_);
-//        if (next_point_index_ < current_trajectory_.points_length) {
-//            // 正在执行
-//            if (!_is_error_in_tolerance(error_point_, current_trajectory_.path_tol, true)) {
-//                // 误差超过容许范围!, 结束执行
-//                desired_point_ = actual_point_;
-//                desired_point_.time_nsec = 0;
-//                _finish_with_error(control_msgs::FollowJointTrajectoryResult::PATH_TOLERANCE_VIOLATED,
-//                                   "PATH_TOLERANCE_VIOLATED");
-//                printf("[Result]: PATH_TOLERANCE_VIOLATED\n");
-//            } else {
-//                // 误差在容许范围内, 继续执行
-//            }
-//        } else {
-//            // 等待结束
-//            if (_is_error_in_tolerance(error_point_, current_trajectory_.goal_tol)) {
-//                // 误差在容许范围, 结束执行
-//
-//                // 记录执行结果
-//                result_.error_code = control_msgs::FollowJointTrajectoryResult::SUCCESSFUL;
-//                result_.error_string = "";
-//                new_result_ = true;
-//
-//                /// 返回到空闲状态
-//                runing_ = false;
-//
-//                auto &p = error_point_;
-//                printf("[Result]: SUCCESSFUL error=[");
-//                for (int i = 0; i < joint_count_; i++) {
-//                    if (i > 0)
-//                        printf(",");
-//                    printf("%.2f", R2D(p.positions[i]));
-//                }
-//                printf("]\n");
-//            } else {
-//                // 误差超过容许范围
-//                if (now - time_start_ <=
-//                    current_trajectory_.points[current_trajectory_.points_length - 1].time_nsec +
-//                    current_trajectory_.goal_time_tolerance) {
-//                    // 用时未超过容差范围, 继续等待
-//                } else {
-//                    // 用时超出, 强制停止
-//                    _is_error_in_tolerance(error_point_, current_trajectory_.goal_tol, true);
-//
-//                    _finish_with_error(control_msgs::FollowJointTrajectoryResult::GOAL_TOLERANCE_VIOLATED,
-//                                       "GOAL_TOLERANCE_VIOLATED");
-//                    printf("[Result]: %.3f > %.3f GOAL_TOLERANCE_VIOLATED\n", (now - time_start_) / 1e6f,
-//                           (current_trajectory_.points[current_trajectory_.points_length - 1].time_nsec +
-//                            current_trajectory_.goal_time_tolerance) / 1e6f);
-//                }
-//            }
-//        }
-//    }
+    bool check_tolerance() {
+        TimePoint now = Clock::now();
+        // 计算误差
+        compute_error(desired_point_, actual_point_, error_point_);
+
+        if (next_point_index_ < current_trajectory_.points_length) { // 正在跟踪轨迹点
+            printf("\033[0;34m[TRAJ] Follow the trajectory points now.\033[0m\n");
+            if (!is_error_in_tolerance(error_point_, path_tolerance_, true)) { // 关节位置误差超过轨迹跟踪容许范围!, 结束执行
+                desired_point_ = actual_point_;
+                desired_point_.time_nsec = 0;
+                // 取消轨迹跟踪
+                cancel();
+                printf("\033[0;34m[TRAJ] PATH_TOLERANCE_VIOLATED.\033[0m\n");
+                path_tolerance_violated = true;
+
+                return false;
+            }
+        } else { // 跟踪最后一个轨迹点, 即将结束
+            printf("\033[0;34m[TRAJ] Follow the last trajectory point now, trajectory follow will done.\033[0m\n");
+
+            if (!is_error_in_tolerance(error_point_, goal_tolerance_, true)) { // 关节位置误差超过目标位置容许范围, 等待执行, 直到超过时间容差
+                uint16_t duration = duration_cast<nanoseconds>(now - time_start_).count();
+                if (duration <= current_trajectory_.points[current_trajectory_.points_length - 1].time_nsec + time_tolerance_) {
+                    // 用时未超过容差范围, 继续等待
+                } else { // 用时超出, 强制停止
+                    cancel(); // 取消轨迹跟踪
+                    printf("\033[0;34m[TRAJ] GOAL_TOLERANCE_VIOLATED.\033[0m\n");
+                    goal_tolerance_violated = true;
+                }
+
+                return false;
+            }
+        }
+
+        return true;
+    }
 
     void spinOnce() {
         // 读当前关节位置
@@ -256,7 +204,7 @@ public:
                         // 起始
                         desired_point_ = current_trajectory_.points[0];
                         // 设定电机状态
-                        _set_motor_positions(desired_point_.positions);
+                        set_motor_positions(desired_point_.positions);
                     } else if (next_point_index_ < current_trajectory_.points_length) {
                         // 中间状态, 计算插值点
                         desired_point_.time_nsec = duration;
@@ -264,17 +212,14 @@ public:
                         linear_interpolate(current_trajectory_.points[next_point_index_ - 1],
                                                current_trajectory_.points[next_point_index_], desired_point_);
                         // 设定电机状态
-                        _set_motor_positions(desired_point_.positions);
+                        set_motor_positions(desired_point_.positions);
                     } else {
                         // 正在结束
                         desired_point_ = current_trajectory_.points[current_trajectory_.points_length - 1];
-                        _set_motor_positions(desired_point_.positions);
+                        set_motor_positions(desired_point_.positions);
 
-                        // 轨迹执行完成
-                        printf("\033[0;36m[TRAJ] Follow trajectory done.\033[0m\n");
-                        runing_ = false;
-                        result_.error_string = "SUCCESS";
-                        state_ = State::STARTING;
+                        write_once_ = false;
+                        last_point_flag_ = true;
                     }
 
                     // 打印插补后的轨迹
@@ -295,39 +240,43 @@ public:
                         }
                         printf("]\n");
                     }
-
-                    // 检查容差
-    //            _check_tolerance();
             }
+
+            if (!write_once_) write_once_ = true; // 成功写入一次目标位置, 标志位置位
         }
     }
 
     // 当读取到新位置时的回调
     void on_read_pos() {
-        // 将电机位置反馈记录到actual_point_
-        actual_point_.time_nsec = Time::now().nsec;
-        actual_point_.positions = motorDriver_.curr_pos;
-        new_read_ = true;
+        if (runing_) {
+            motorDriver_.print_position(0); // 持续打印关节位置信息
+            // 将电机位置反馈记录到actual_point_
+            actual_point_.time_nsec = Time::now().nsec;
+            actual_point_.positions = motorDriver_.curr_pos;
 
-//        if (runing_) _check_tolerance();
+            // 位置及时间容差检查
+            if (write_once_) { // 读取当前位置后, 进行轨迹容差检查, 需在已写入一次目标位置后执行
+                if (check_tolerance()) { // 在误差容许范围内
+                    if (last_point_flag_) { // 是最后一个轨迹点
+                        last_point_flag_ = false;
+
+                        /// 轨迹执行完成
+                        printf("\033[0;36m[TRAJ] Follow trajectory done.\033[0m\n");
+                        runing_ = false;
+                        state_ = State::STARTING;
+                        follow_done_ = true;
+                    }
+                }
+            }
+        }
     }
 
     // 设置要跟踪的目标轨迹
-    bool set_goal(const GoalHandle& gh) {
-//        if (emergency_stop()) {
-//            // 急停状态
-//            printf("Goal rejected, emergency_stop_\n");
-//            result_.error_code = control_msgs::FollowJointTrajectoryResult::PATH_TOLERANCE_VIOLATED;
-//            result_.error_string = "emergency_stop_";
-//            new_result_ = true;
-//            return -4;
-//        }
+    bool set_goal(GoalHandle& gh) {
 
         // 检查轨迹消息
-        auto parser = TrajectoryParser<joint_count_, max_traj_points_> (motorDriver_.joint_names_, gh,
-                                                                           current_trajectory_);
-        // 拷贝容差值
-//        parser.copy_tolerance(default_path_tol_, default_goal_tol_);
+        auto parser = TrajectoryParser<joint_count_, max_traj_points_> (motorDriver_.joint_names_, gh, current_trajectory_);
+
         // 拷贝轨迹数据
         parser.copy_trajectory();
 
@@ -340,69 +289,10 @@ public:
         return true;
     }
 
-    bool cancel_by_client() {
-        printf("\033[0;34m[TRAJ] Goal cancelled by client.\033[0m\n");
+    void cancel() {
         runing_ = false; // 取消轨迹跟踪
         state_ = State::STARTING; // 轨迹跟踪设为起始状态
     }
-
-//    // 由主循环调用, 取消当前操作
-//    int cancel() {
-//        // 设定空消息, 即为取消操作
-//        printf("Canceled\n");
-//        set_goal(GoalHandle);
-//        result_.error_code = control_msgs::FollowJointTrajectoryResult::PATH_TOLERANCE_VIOLATED;
-//        result_.error_string = "canceled";
-//        new_result_ = true;
-//        return 0;
-//    }
-
-//    // 由主循环调用, 获取当前反馈信息, 当没有新的反馈信息或未启动时, 返回-1
-//    int get_feedback(control_msgs::FollowJointTrajectoryFeedback &fb) {
-//        InterruptLock lock;
-//        InterruptLockGuard lock_guard(lock);
-//
-//        int ret;
-//        if (new_read_) {
-//
-//            fb.header.seq = arm_.count_read_;
-//            fb.header.stamp.fromNSec(arm_.last_recv_ok_);
-//            fb.header.frame_id = "";
-//            fb.joint_names_length = arm_.joint_names().size();
-//            fb.joint_names = (char **) arm_.joint_names().data();
-//            fb.actual.positions_length = (uint32_t) joint_count_;
-//            fb.actual.positions = actual_point_.positions;
-//            fb.desired.positions_length = (uint32_t) joint_count_;
-//            fb.desired.positions = desired_point_.positions;
-//            fb.error.positions_length = (uint32_t) joint_count_;
-//            fb.error.positions = error_point_.positions;
-//
-//            new_read_ = false;
-//            ret = 0;
-//        } else {
-//            ret = -1;
-//        }
-//        return ret;
-//    }
-//
-//    // 由主循环调用, 获取结果
-//    int get_result(control_msgs::FollowJointTrajectoryResult **result_out) {
-//        InterruptLock lock;
-//        InterruptLockGuard lock_guard(lock);
-//
-//        int ret;
-//        if (new_result_) {
-//            *result_out = &result_;
-//            new_result_ = false;
-//            ret = 0;
-//        } else {
-//            *result_out = NULL;
-//            ret = -1;
-//        }
-//
-//        return ret;
-//    }
-
 };
 
 }
