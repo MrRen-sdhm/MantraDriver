@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+
+<launch>  
+    <arg name="use_hand" default="false"/>
+
+    <!-- robot_ip: IP-address of the robot's socket-messaging server -->
+    <!-- <arg name="robot_ip" doc="IP of the controller" /> -->
+
+    <!-- robot driver -->
+    <node name="mantra_driver" pkg="mantra_driver" type="mantra_driver" output="screen">
+        <param name="with_hand" value="$(arg use_hand)" />
+    </node>
+</launch>

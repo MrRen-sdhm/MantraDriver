@@ -39,7 +39,7 @@ public:
     static const int joint_count_ = MotorDriver::motor_cnt_;
     static const int max_traj_points_ = 200;
 
-    const float path_tolerance_ = 5 * float(M_PI) / 180; // 各关节轨迹跟踪位置容差 3度
+    const float path_tolerance_ = 5 * float(M_PI) / 180; // 各关节轨迹跟踪位置容差 5度
     const float goal_tolerance_ = 0.1 * float(M_PI) / 180; // 各关节目标位置容差 0.1度
 
     // 轨迹执行时间容差
@@ -120,10 +120,11 @@ public:
     // 检查误差是否在容许范围内
     bool is_error_in_tolerance(const TrajectoryPoint <joint_count_> &error, float tolerance, bool display = false) {
         for (int i = 0; i < joint_count_; i++) {
-            if (std::abs(error.positions[i]) > tolerance) {
+            if (std::abs(error.positions[i]) > tolerance && i < joint_count_ - 1) { // 忽略末端关节
                 if (display) {
-                    printf("joint %d: abs(error %f (%f deg)) > tol %f (%f deg)\n", i + 1, std::abs(error.positions[i]),
+                    printf("[TRAJ] joint %d: abs(error %f (%f deg)) > tol %f (%f deg)\n", i + 1, std::abs(error.positions[i]),
                             R2D(std::abs(error.positions[i])), tolerance, R2D(path_tolerance_));
+                    printf("\033[1;32m[WARN] Please make sure that the motor[%d] could move correctly!\033[0m\n", i+1);
                 }
                 return false;
             }
@@ -138,19 +139,19 @@ public:
         compute_error(desired_point_, actual_point_, error_point_);
 
         if (next_point_index_ < current_trajectory_.points_length) { // 正在跟踪轨迹点
-            printf("\033[0;34m[TRAJ] Follow the trajectory points now.\033[0m\n");
+            printf("\033[1;34m[TRAJ] Follow the trajectory points now.\033[0m\n");
             if (!is_error_in_tolerance(error_point_, path_tolerance_, true)) { // 关节位置误差超过轨迹跟踪容许范围!, 结束执行
                 desired_point_ = actual_point_;
                 desired_point_.time_nsec = 0;
                 // 取消轨迹跟踪
                 cancel();
-                printf("\033[0;34m[TRAJ] PATH_TOLERANCE_VIOLATED.\033[0m\n");
+                printf("\033[1;34m[TRAJ] PATH_TOLERANCE_VIOLATED.\033[0m\n");
                 path_tolerance_violated = true;
 
                 return false;
             }
         } else { // 跟踪最后一个轨迹点, 即将结束
-            printf("\033[0;34m[TRAJ] Follow the last trajectory point now, trajectory follow will done.\033[0m\n");
+            printf("\033[1;34m[TRAJ] Follow the last trajectory point now, trajectory follow will done.\033[0m\n");
 
             if (!is_error_in_tolerance(error_point_, goal_tolerance_, true)) { // 关节位置误差超过目标位置容许范围, 等待执行, 直到超过时间容差
                 uint16_t duration = duration_cast<nanoseconds>(now - time_start_).count();
@@ -158,7 +159,7 @@ public:
                     // 用时未超过容差范围, 继续等待
                 } else { // 用时超出, 强制停止
                     cancel(); // 取消轨迹跟踪
-                    printf("\033[0;34m[TRAJ] GOAL_TOLERANCE_VIOLATED.\033[0m\n");
+                    printf("\033[1;34m[TRAJ] GOAL_TOLERANCE_VIOLATED.\033[0m\n");
                     goal_tolerance_violated = true;
                 }
 
@@ -187,7 +188,7 @@ public:
                     time_start_ = now;
                     next_point_index_ = 0;
                     state_ = State::WORKING;
-                    printf("\033[0;36m[TRAJ] Start follow trajectory.\033[0m\n");
+                    printf("\033[1;36m[TRAJ] Start follow trajectory.\033[0m\n");
                     // don't break here
 
                 case State::WORKING:
@@ -231,7 +232,7 @@ public:
                     if (Time::now().toSec() - last_print_time_ > 0) { // 间隔打印, 设为0即一直打印
                         last_print_time_ = Time::now().toSec();
                         auto &p = desired_point_;
-                        printf("\033[0;36m[TRAJ]\033[0m %zu/%zu %.3fsec [", next_point_index_,
+                        printf("\033[1;36m[TRAJ]\033[0m %zu/%zu %.3fsec [", next_point_index_,
                                current_trajectory_.points_length, duration / 1e9f);
                         for (int i = 0; i < joint_count_; i++) {
                             if (i > 0)
@@ -261,7 +262,7 @@ public:
                         last_point_flag_ = false;
 
                         /// 轨迹执行完成
-                        printf("\033[0;36m[TRAJ] Follow trajectory done.\033[0m\n");
+                        printf("\033[1;36m[TRAJ] Follow trajectory done.\033[0m\n");
                         runing_ = false;
                         state_ = State::STARTING;
                         follow_done_ = true;
@@ -280,7 +281,7 @@ public:
         // 拷贝轨迹数据
         parser.copy_trajectory();
 
-        printf("\033[0;36m[TRAJ] Goal accepted, start trajectory follow.\033[0m\n");
+        printf("\033[1;36m[TRAJ] Goal accepted, start trajectory follow.\033[0m\n");
 
         current_trajectory_.print();
 

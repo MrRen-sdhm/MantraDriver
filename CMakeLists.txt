@@ -145,13 +145,16 @@ include_directories(
   ${catkin_INCLUDE_DIRS}
 )
 
-aux_source_directory(3rdparty/libmodbus DIRSRCS)
+aux_source_directory(3rdparty/libmodbus LIBMODBUSSRCS)
+aux_source_directory(3rdparty/serialport SERIALPORTSRCS)
+
 set(SOURCE_FILES
         src/main.cpp
         src/modbusadapter.cpp
         src/motor_driver.cpp
+        src/ocservo_driver.cpp
         src/action_server.cpp
-        src/robot_state_publisher.cpp
+        src/jointstate_publisher.cpp
         src/trajectory_follower.cpp)
 
 ## Declare a C++ library
@@ -168,7 +171,8 @@ set(SOURCE_FILES
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/mantra_driver_node.cpp)
-add_executable(mantra_driver ${SOURCE_FILES} ${DIRSRCS})
+add_executable(mantra_driver ${SOURCE_FILES} ${LIBMODBUSSRCS} ${SERIALPORTSRCS})
+add_executable(ocservo_test src/ocservo_test.cpp src/ocservo_driver.cpp ${SERIALPORTSRCS})
 
 ## Rename C++ executable without prefix
 ## The above recommended prefix causes long target names, the following renames the
@@ -182,6 +186,7 @@ add_executable(mantra_driver ${SOURCE_FILES} ${DIRSRCS})
 
 ## Specify libraries to link a library or executable target against
 target_link_libraries(mantra_driver ${catkin_LIBRARIES})
+target_link_libraries(ocservo_test ${catkin_LIBRARIES})
 
 #############
 ## Install ##

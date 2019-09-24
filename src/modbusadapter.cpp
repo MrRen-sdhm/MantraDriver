@@ -41,17 +41,17 @@ void ModbusAdapter::modbusConnectRTU(string port, int baud, char parity, int dat
 #endif
 
     if(m_modbus == nullptr){
-        cerr<<  "Connection failed. Unable to create the libmodbus context\n";
+        printf("\033[1;31m[ERRO] Connection failed. Unable to create the libmodbus context.\033[0m\n");
         return;
     }
     else if(m_modbus && modbus_set_slave(m_modbus, m_slave) == -1){
         modbus_free(m_modbus);
-        cerr<<  "Connection failed. Invalid slave ID\n";
+        printf("\033[1;31m[ERRO] Connection failed. Invalid slave ID.\033[0m\n");
         return;
     }
     else if(m_modbus && modbus_connect(m_modbus) == -1) {
         modbus_free(m_modbus);
-        cerr<<  "Connection failed. Could not connect to serial port\n";
+        printf("\033[1;31m[ERRO] Connection failed. Could not connect to serial port.\033[0m\n");
         m_connected = false;
         line += "Failed\n";
     }
@@ -77,7 +77,8 @@ int ModbusAdapter::modbusConnectTCP(const string ip, int port, int timeOut)
     line = "[INFO] Connecting to IP: " + ip + ":" + to_string(port);
 
     if (ip == ""){
-        cerr <<  "[ERRO] Connection failed. Blank IP Address\n";
+        printf("\033[1;31m[ERRO] Connection failed. Blank IP Address.\033[0m\n");
+
         return -2;
     }
     else {
@@ -91,15 +92,15 @@ int ModbusAdapter::modbusConnectTCP(const string ip, int port, int timeOut)
 #endif
 
     if(m_modbus == NULL){
-        cerr<<  "Connection failed. Unable to create the libmodbus context\n";
-        throw runtime_error("\033[0;31mUnable to create the libmodbus context!\033[0m\n");
+        printf("\033[1;31m[ERRO] Connection failed. Unable to create the libmodbus context.\033[0m\n");
+        throw runtime_error("\033[1;31mUnable to create the libmodbus context!\033[0m\n");
     }
     else if(m_modbus && modbus_connect(m_modbus) == -1) {
         modbus_free(m_modbus);
-        cerr << "Connection to IP: " << ip << ":" << port << " failed. Could not connect to TCP port\n";
+        printf("\033[1;31m[ERRO]Connection to IP: %s:%d failed. Could not connect to TCP port.\033[0m\n", ip.c_str(), port);
         m_connected = false;
         line += " Failed\n";
-        throw runtime_error("\033[0;31mCould not connect to TCP port!\033[0m\n");
+        throw runtime_error("\033[1;31mCould not connect to TCP port!\033[0m\n");
     }
     else {
         //error recovery mode
@@ -190,11 +191,11 @@ void ModbusAdapter::modbusReadData(int slave, int functionCode, int startAddress
         string line;
         if(ret < 0) {
             line = string("Error: ") +  libmodbus_strerror(errno);
-            cerr <<  "Read Data failed. " << line << endl;
+            printf("\033[1;31m[ERRO] Read Data failed.\033[0m\n");
         }
         else {
             line = string("Number of registers returned does not match number of registers requested!. Error: ") + libmodbus_strerror(errno);
-            cerr <<  "Read Data failed. " << line << endl;
+            printf("\033[1;31m[ERRO] Read Data failed.\033[0m\n");
         }
         modbus_flush(m_modbus); //flush data
     }
@@ -227,13 +228,13 @@ int ModbusAdapter::modbusReadHoldReg(int slave, int startAddress, int noOfItems,
         string line;
         if(ret < 0) {
             line = string("Error: ") +  libmodbus_strerror(errno);
-            cerr <<  "Read Data failed. " << line << endl;
-            throw runtime_error("\033[0;31mRead Data failed.\033[0m\n");
+            printf("\033[1;31m[ERRO] Read Data failed.\033[0m\n");
+            throw runtime_error("\033[1;31mRead Data failed.\033[0m\n");
         }
         else {
             line = string("Number of registers returned does not match number of registers requested!. Error: ") + libmodbus_strerror(errno);
-            cerr <<  "Read Data failed. " << line << endl;
-            throw runtime_error("\033[0;31mRead Data failed.\033[0m\n");
+            printf("\033[1;31m[ERRO] Read Data failed.\033[0m\n");
+            throw runtime_error("\033[1;31mRead Data failed.\033[0m\n");
         }
         modbus_flush(m_modbus); //flush data
 
@@ -308,13 +309,13 @@ int ModbusAdapter::modbusWriteData(int slave, int functionCode, int startAddress
         string line;
         if(ret < 0) {
             line = string("Error: ") +  libmodbus_strerror(errno);
-            cerr <<  "Write Data failed. " << line << endl;
-            throw runtime_error("\033[0;31mWrite Data failed.\033[0m\n");
+            printf("\033[1;31m[ERRO] Write Data failed.\033[0m\n");
+            throw runtime_error("\033[1;31mWrite Data failed.\033[0m\n");
         }
         else {
             line = string("Number of registers returned does not match number of registers requested!. Error: ") + libmodbus_strerror(errno);
-            cerr <<  "Write Data failed. " << line << endl;
-            throw runtime_error("\033[0;31mWrite Data failed.\033[0m\n");
+            printf("\033[1;31m[ERRO] Write Data failed.\033[0m\n");
+            throw runtime_error("\033[1;31mWrite Data failed.\033[0m\n");
         }
         modbus_flush(m_modbus); //flush data
         return -1;
