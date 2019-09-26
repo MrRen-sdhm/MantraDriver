@@ -5,7 +5,8 @@
 #include "motor_driver.h"
 
 namespace Mantra {
-MotorDriver::MotorDriver(string ip, const int port, int slaver, const string& joint_prefix) : slaver_(slaver){
+MotorDriver::MotorDriver(string ip, const int port, int slaver, const string& joint_prefix, bool show_info) :
+                                                                            slaver_(slaver), show_info_(show_info) {
     // modbus tcp 初始化
     m_master_ = new ModbusAdapter();
     m_master_->modbusConnectTCP(std::move(ip), port);
@@ -134,7 +135,7 @@ bool MotorDriver::do_read_operation() {
 //        curr_eff[id-1] = device_.get_curr_effort(id); // 当前位置保存到位置缓冲区
 //    }
 
-    print_position(1); // 1s打印一次
+    if (show_info_) print_position(1); // 1s打印一次
 
     do_read_flag_ = false;
     return true;

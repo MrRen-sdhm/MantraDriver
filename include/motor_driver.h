@@ -288,7 +288,7 @@ public:
     std::array<double, motor_cnt_> curr_vel{}; // 读取速度数据的缓冲区
     std::array<double, motor_cnt_> curr_eff{}; // 读取力矩数据的缓冲区
 
-    MotorDriver(string ip, int port, int slaver, const string& joint_prefix); // 构造函数
+    MotorDriver(string ip, int port, int slaver, const string& joint_prefix, bool show_info); // 构造函数
 
     /// 外部接口
     // 设置虚拟寄存器中目标关节位置,加零位
@@ -320,6 +320,7 @@ private:
     ros::Subscriber sub_hmi_;        // 上位机消息订阅
     bool do_read_flag_  = false;     // 读取标志
     bool do_write_flag_ = false;     // 写入标志
+    bool show_info_ = false; // 打印输出标志
 
     /// 寄存器相关参数
     MantraDevice device_; // 机械臂

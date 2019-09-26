@@ -19,8 +19,11 @@ int main(int argc, char*argv[]) {
     nh.param("with_hand", with_hand, false);
     if (with_hand) printf("\033[1;32m[INFO] Bring up mantra with gripper!\033[0m\n");
 
+    bool show_info = false;
+    nh.param("show_info", show_info, false);
+
     /// 机械臂驱动、Action服务及轨迹跟踪器实例化
-    auto *armDriver = new MotorDriver("192.168.0.1", 502, 1, "joint"); // 机械臂驱动
+    auto *armDriver = new MotorDriver("192.168.0.1", 502, 1, "joint", show_info); // 机械臂驱动
     Arm::ActionServerArm *action_server_arm(nullptr); // 机械臂Action服务器
     TrajectoryFollower *traj_follower; // 关节轨迹跟随器
     traj_follower = new TrajectoryFollower(*armDriver); // 关节轨迹跟随器
