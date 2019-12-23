@@ -38,73 +38,82 @@ struct MantraDevice {
 #pragma pack(1)    // 设定为1字节对齐, 高地址对应高位, 如4011对应低八位, 4012对应高八位
     // 内存区间总长度为 (220字节, 110个数据, 存储于110个寄存器) uint16_t -> 2字节 -> 16位 -> 1个数据
     struct Register {
-        // 16字节 8个数据
-        int32_t target_position_1; // 40011-40012 offset 0
+        /***  写  ***/
+        int32_t target_position_1; // 40011-40012 4字节 2个数据 %MW10-%MW11
+        int32_t target_position_2; // 40013-40014 4字节 2个数据 %MW12-%MW13
+        int32_t target_position_3;
+        int32_t target_position_4;
+        int32_t target_position_5;
+        int32_t target_position_6;
+        int32_t target_position_7;
+
         int16_t target_velocity_1;
-        int16_t target_torque_1;
-        int32_t position_value_1;  // 40015-40016 offset 4
-        int16_t velocity_value_1;
-        int16_t torque_value_1;
-        // 16字节
-        int32_t target_position_2; // 40019-40020 offset 8
         int16_t target_velocity_2;
+        int16_t target_velocity_3;
+        int16_t target_velocity_4;
+        int16_t target_velocity_5;
+        int16_t target_velocity_6;
+        int16_t target_velocity_7;
+
+        int16_t target_torque_1;
         int16_t target_torque_2;
-        int32_t position_value_2;  // 40023-40025 offset 12
+        int16_t target_torque_3;
+        int16_t target_torque_4;
+        int16_t target_torque_5;
+        int16_t target_torque_6;
+        int16_t target_torque_7;  // %MW37
+
+        /***  读  ***/
+        // 8字节
+        int32_t position_value_1; // 40039-40040 4字节 2个数据 %MW38-%MW39
+        int16_t velocity_value_1; // 40041       2字节 1个数据 %MW40
+        int16_t torque_value_1;   // 40042       2字节 1个数据 %MW41
+        // 8字节
+        int32_t position_value_2; // 40043-40044
         int16_t velocity_value_2;
         int16_t torque_value_2;
-        // 16字节
-        int32_t target_position_3;
-        int16_t target_velocity_3;
-        int16_t target_torque_3;
+        // 8字节
         int32_t position_value_3;
         int16_t velocity_value_3;
         int16_t torque_value_3;
-        // 16字节
-        int32_t target_position_4;
-        int16_t target_velocity_4;
-        int16_t target_torque_4;
+        // 8字节
         int32_t position_value_4;
         int16_t velocity_value_4;
         int16_t torque_value_4;
-        // 16字节
-        int32_t target_position_5;
-        int16_t target_velocity_5;
-        int16_t target_torque_5;
+        // 8字节
         int32_t position_value_5;
         int16_t velocity_value_5;
         int16_t torque_value_5;
-        // 16字节
-        int32_t target_position_6;
-        int16_t target_velocity_6;
-        int16_t target_torque_6;
+        // 8字节
         int32_t position_value_6;
         int16_t velocity_value_6;
         int16_t torque_value_6;
-        // 16字节
-        int32_t target_position_7;
-        int16_t target_velocity_7;
-        int16_t target_torque_7;
+        // 8字节
         int32_t position_value_7;
         int16_t velocity_value_7;
-        int16_t torque_value_7;
-        // 14字节
-        int16_t err_code_1;
-        int16_t err_code_2;
-        int16_t err_code_3;
-        int16_t err_code_4;
-        int16_t err_code_5;
-        int16_t err_code_6;
-        int16_t err_code_7;
-        // 2字节
-        int16_t contrller_status; // 控制器状态
+        int16_t torque_value_7;   // %MW65
+
         // 28字节
-        int32_t zero_position_1;
+        int32_t zero_position_1; // 40067-40068 4字节 2个数据 %MW66-%MW67
         int32_t zero_position_2;
         int32_t zero_position_3;
         int32_t zero_position_4;
         int32_t zero_position_5;
         int32_t zero_position_6;
-        int32_t zero_position_7;
+        int32_t zero_position_7; // %MW78-%MW79
+
+        // 14字节
+        int16_t err_code_1; // %MW80
+        int16_t err_code_2;
+        int16_t err_code_3;
+        int16_t err_code_4;
+        int16_t err_code_5;
+        int16_t err_code_6;
+        int16_t err_code_7; // %MW86
+
+        // 2字节
+        int16_t ctrller_status; // 控制器状态  %MW87
+
     } registers;
 
     struct BitRegister {
@@ -122,47 +131,36 @@ struct MantraDevice {
 
     static uint8_t offset_goal_position(int id) {
 //        printf("[DEBUG] offsetOf target_position_1: %zu\n", offsetOf(&Register::target_position_1));
-        return offsetOf(&Register::target_position_1) + 8*(id-1);
+        return offsetOf(&Register::target_position_1) + 2*(id-1); // 各目标位置寄存器相差2字
     }
     static uint8_t offset_curr_position(int id) {
 //        printf("[DEBUG] offsetOf position_value_1: %zu\n", offsetOf<>(&Register::position_value_1));
-        return offsetOf(&Register::position_value_1) + 8*(id-1);
+        return offsetOf(&Register::position_value_1) + 4*(id-1); // 各当前位置寄存器相差4字
     }
-    static uint8_t offset_curr_velocity(int id) { return offsetOf(&Register::velocity_value_1) + 8*(id-1); }
-    static uint8_t offset_curr_effort(int id) { return offsetOf(&Register::torque_value_1) + 8*(id-1); }
-//    static uint32_t sizeof_goal_position() { return sizeof(Register::goal_position); }
-//
-//    static uint32_t offset_read_data() { return offsetOf(&Register::present_position); }
-//    static uint32_t sizeof_read_data() { return sizeof(Register::present_position); }
+    static uint8_t offset_curr_velocity(int id) { return offsetOf(&Register::velocity_value_1) + 4*(id-1); }
+    static uint8_t offset_curr_effort(int id) { return offsetOf(&Register::torque_value_1) + 4*(id-1); }
 
     int16_t *memory() {
         return (int16_t *) &registers;
     }
 
+    int16_t *write_memory() {
+        return (int16_t *) &registers.target_position_1;
+    }
+
+    int16_t *read_memory() {
+        return (int16_t *) &registers.position_value_1;
+    }
+
     int16_t *bit_memory() {
         return (int16_t *) &bit_registers;
     }
-//
-//    int32_t _max_position(uint8_t id) {
-//        static_assert(cycle_step % 2 == 0, "motor_cycle_step must divide by 2");
-//        return (cycle_step / 2) * reduction_ratio[id] - 1;
-//    }
-//
-//    int32_t _min_position(uint8_t id) {
-//        static_assert(cycle_step % 2 == 0, "motor_cycle_step must divide by 2");
-//        return -(cycle_step / 2) * reduction_ratio[id];
-//    }
 
-//    // 计算电机当前角度, 单位: rad, 有效范围-pi到+pi
-//    float present_position(int id) {
-//        return float(registers.present_position) / motor_cycle_step_ / registers.reduction_ratio * 2 * float(M_PI);
-//    }
-//
     // 返回目标位置指针
     int32_t *goal_pos_ptr(uint8_t id) {
         if (1 <= id && id <= 7) {
             auto target_position_1_ptr = (int16_t *) &registers.target_position_1;
-            return (int32_t *)(target_position_1_ptr + 8*(id-1)); // 强制转换为uint32_t指针
+            return (int32_t *)(target_position_1_ptr + 2*(id-1)); // 强制转换为uint32_t指针
         } else {
             throw runtime_error("\033[1;31mGiven a bad id when get goal position!\033[0m\n");
         }
@@ -172,9 +170,29 @@ struct MantraDevice {
     int32_t *curr_pos_ptr(uint8_t id) {
         if (1 <= id && id <= 7) {
             auto position_1_ptr = (int16_t *)&registers.position_value_1;
-            return (int32_t *)(position_1_ptr + 8*(id-1)); // 强制转换为uint32_t指针
+            return (int32_t *)(position_1_ptr + 4*(id-1)); // 强制转换为uint32_t指针
         } else {
             throw runtime_error("\033[1;31mGiven a bad id when get current position!\033[0m\n");
+        }
+    }
+
+    // 返回当前速度指针
+    int16_t *curr_vel_ptr(uint8_t id) {
+        if (1 <= id && id <= 7) {
+            auto position_1_ptr = (int16_t *)&registers.velocity_value_1;
+            return (int16_t *)(position_1_ptr + 4*(id-1)); // 强制转换为uint32_t指针
+        } else {
+            throw runtime_error("\033[1;31mGiven a bad id when get goal velocity!\033[0m\n");
+        }
+    }
+
+    // 返回当前扭矩指针
+    int16_t *curr_eff_ptr(uint8_t id) {
+        if (1 <= id && id <= 7) {
+            auto position_1_ptr = (int16_t *)&registers.torque_value_1;
+            return (int16_t *)(position_1_ptr + 4*(id-1)); // 强制转换为uint32_t指针
+        } else {
+            throw runtime_error("\033[1;31mGiven a bad id when get goal velocity!\033[0m\n");
         }
     }
 
@@ -188,35 +206,11 @@ struct MantraDevice {
         }
     }
 
-    // 返回当前速度指针
-    int16_t *curr_vel_ptr(uint8_t id) {
-        if (1 <= id && id <= 7) {
-            auto position_1_ptr = (int16_t *)&registers.velocity_value_1;
-            return (int16_t *)(position_1_ptr + 8*(id-1)); // 强制转换为uint32_t指针
-        } else {
-            throw runtime_error("\033[1;31mGiven a bad id when get goal velocity!\033[0m\n");
-        }
-    }
-
-    // 返回当前扭矩指针
-    int16_t *curr_eff_ptr(uint8_t id) {
-        if (1 <= id && id <= 7) {
-            auto position_1_ptr = (int16_t *)&registers.torque_value_1;
-            return (int16_t *)(position_1_ptr + 8*(id-1)); // 强制转换为uint32_t指针
-        } else {
-            throw runtime_error("\033[1;31mGiven a bad id when get goal velocity!\033[0m\n");
-        }
-    }
-
     // 设定虚拟寄存器中 目标关节角度 单位为度的10000倍
     bool set_goal_position(uint8_t id, double rad) {
         if (!std::isfinite(rad)) {
             return false;
         }
-//        rad = std::min((double) M_PI, rad);
-//        rad = std::max((double) -M_PI, rad);
-//        double rounds = rad / (2 * double(M_PI)); // 对应的转数
-//        auto pos = int32_t (rounds * reduction_ratio[id-1] * cycle_step); // 脉冲数 = 转数/减速比*分辨率
 
         double deg = R2D(rad);
         auto pos = int32_t (10000.0*deg);
@@ -324,14 +318,18 @@ private:
 
     /// 寄存器相关参数
     MantraDevice device_; // 机械臂
-    const uint32_t hmi_addr_head_  = 10; // HMI字节操作首地址 HMI:40011->modbus addr 10
-    const uint32_t hmi_bit_addr_head_ = 0; // HMI字节操作首地址 HMI:40011->modbus addr 10
+    const uint32_t hmi_addr_head_ = 10;
+    const uint32_t hmi_addr_write_head_  = 10;  // HMI字节写操作首地址 HMI:40011->modbus addr %MW10 即第10个字开始
+    const uint32_t hmi_addr_read_head_  = 38;   // HMI字节读操作首地址 HMI:40039->modbus addr %MW38 即第38个字开始
+    const uint32_t hmi_bit_addr_head_ = 0; // HMI位操作首地址   HMI:40000->modbus addr %MW0 即第0个字开始
     const uint32_t hmi_addr_power_ = 01; // 高八位为关节使能地址, 10-16位控制各关节使能, 9位控制所有关节
     const uint32_t hmi_addr_reset_ = 01; // 低八位为关节使能地址, 1-8位控制各关节复位, 1位控制所有关节
     const uint32_t hmi_addr_home_  = 02; // 高八位为关节置零地址, 10-16位控制各关节置零, 9位控制所有关节
     const uint32_t hmi_addr_back_  = 02; // 低八位为关节回零地址, 1-8位控制各关节回零, 1位控制所有关节
     size_t reg_size_ = sizeof(typename MantraDevice::Register); // MantraDevice::Register尺寸
     size_t ctrller_reg_len_ = reg_size_/2; // 控制器寄存器数量, 即uint16_t数据量
+    size_t write_reg_len_ = 28; // 可写寄存器数量, 4*7 = 28
+    size_t read_reg_len_ = ctrller_reg_len_ - write_reg_len_; // 可读寄存器数量
 
     size_t bit_reg_size_ = sizeof(typename MantraDevice::BitRegister); // MantraDevice::BitRegister尺寸
     size_t bit_reg_len_ = bit_reg_size_/2; // 控制器寄存器数量, 即uint16_t数据量

@@ -32,15 +32,19 @@ public:
     typedef control_msgs::FollowJointTrajectoryResult Result;
     typedef actionlib::ServerGoalHandle<Action> GoalHandle;
 
-    explicit TrajectoryFollower(MotorDriver &motorDriver) : motorDriver_(motorDriver){};
+    explicit TrajectoryFollower(MotorDriver &motorDriver, float path_tolerance, float goal_tolerance) :
+                        motorDriver_(motorDriver), path_tolerance_(path_tolerance), goal_tolerance_(goal_tolerance) {
+        path_tolerance_ = path_tolerance_ * float(M_PI) / 180;
+        goal_tolerance_ = goal_tolerance_ * float(M_PI) / 180;
+    }
 
     MotorDriver& motorDriver_;
 
     static const int joint_count_ = MotorDriver::motor_cnt_;
     static const int max_traj_points_ = 200;
 
-    const float path_tolerance_ = 5 * float(M_PI) / 180; // 各关节轨迹跟踪位置容差 5度
-    const float goal_tolerance_ = 0.1 * float(M_PI) / 180; // 各关节目标位置容差 0.1度
+    float path_tolerance_; // 各关节轨迹跟踪位置容差 5度  FIXME:由于通信延迟，此处容差暂时设大
+    float goal_tolerance_; // 各关节目标位置容差 0.5度
 
     // 轨迹执行时间容差
     const uint32_t time_tolerance_ = 1000000000; // 1秒
@@ -58,7 +62,7 @@ public:
     volatile bool runing_ = false;           // 是否跟随轨迹
     volatile bool follow_done_ = false;      // 轨迹跟踪完成标志
     volatile bool write_once_ = false;       // 目标位置写入标志
-    volatile bool last_point_flag_ = false;   // 最后一个轨迹点写入完成标志
+    volatile bool last_point_flag_ = false;  // 最后一个轨迹点写入完成标志
     volatile bool path_tolerance_violated = false; // 轨迹执行超过容差标志
     volatile bool goal_tolerance_violated = false; // 终点位置超过容差标志
 
@@ -123,7 +127,7 @@ public:
             if (std::abs(error.positions[i]) > tolerance && i < joint_count_ - 1) { // 忽略末端关节
                 if (display) {
                     printf("[TRAJ] joint %d: abs(error %f (%f deg)) > tol %f (%f deg)\n", i + 1, std::abs(error.positions[i]),
-                            R2D(std::abs(error.positions[i])), tolerance, R2D(path_tolerance_));
+                            R2D(std::abs(error.positions[i])), tolerance, R2D(tolerance));
                     printf("\033[1;32m[WARN] Please make sure that the motor[%d] could move correctly!\033[0m\n", i+1);
                 }
                 return false;
@@ -140,18 +144,23 @@ public:
 
         if (next_point_index_ < current_trajectory_.points_length) { // 正在跟踪轨迹点
             printf("\033[1;34m[TRAJ] Follow the trajectory points now.\033[0m\n");
-            if (!is_error_in_tolerance(error_point_, path_tolerance_, true)) { // 关节位置误差超过轨迹跟踪容许范围!, 结束执行
-                desired_point_ = actual_point_;
-                desired_point_.time_nsec = 0;
-                // 取消轨迹跟踪
-                cancel();
-                printf("\033[1;34m[TRAJ] PATH_TOLERANCE_VIOLATED.\033[0m\n");
-                path_tolerance_violated = true;
+            if (next_point_index_ > 1) { // 不判断起始点
+                if (!is_error_in_tolerance(error_point_, path_tolerance_, true)) { // 关节位置误差超过轨迹跟踪容许范围!, 结束执行
+                    desired_point_ = actual_point_;
+                    desired_point_.time_nsec = 0;
+                    // 取消轨迹跟踪
+                    cancel();
+                    printf("\033[1;32m[WARN] Maybe you should reduce the speed or turn up the tolerance!\033[0m\n");
+                    printf("\033[1;34m[TRAJ] PATH_TOLERANCE_VIOLATED.\033[0m\n");
+                    path_tolerance_violated = true;
 
-                return false;
+                    return false;
+                }
             }
         } else { // 跟踪最后一个轨迹点, 即将结束
             printf("\033[1;34m[TRAJ] Follow the last trajectory point now, trajectory follow will done.\033[0m\n");
+
+            usleep(1000*100); // 休眠0.1s以确保关节已停止运动
 
             if (!is_error_in_tolerance(error_point_, goal_tolerance_, true)) { // 关节位置误差超过目标位置容许范围, 等待执行, 直到超过时间容差
                 uint16_t duration = duration_cast<nanoseconds>(now - time_start_).count();

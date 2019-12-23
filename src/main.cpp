@@ -20,13 +20,13 @@ int main(int argc, char*argv[]) {
     if (with_hand) printf("\033[1;32m[INFO] Bring up mantra with gripper!\033[0m\n");
 
     bool show_info = false;
-    nh.param("show_info", show_info, false);
+    nh.param("show_info", show_info, true);
 
     /// 机械臂驱动、Action服务及轨迹跟踪器实例化
-    auto *armDriver = new MotorDriver("192.168.0.1", 502, 1, "joint", show_info); // 机械臂驱动
+    auto *armDriver = new MotorDriver("192.168.0.6", 502, 1, "joint", show_info); // 机械臂驱动
     Arm::ActionServerArm *action_server_arm(nullptr); // 机械臂Action服务器
     TrajectoryFollower *traj_follower; // 关节轨迹跟随器
-    traj_follower = new TrajectoryFollower(*armDriver); // 关节轨迹跟随器
+    traj_follower = new TrajectoryFollower(*armDriver, 2.0, 0.2); // 关节轨迹跟随器
     action_server_arm = new Arm::ActionServerArm(*traj_follower, *armDriver, "mantra/arm"); // 机械臂Action服务器
     // 开启机械臂Action服务器
     action_server_arm->start();
@@ -42,11 +42,11 @@ int main(int argc, char*argv[]) {
         // 开启手抓Action服务器
         action_server_hand->start();
 
-        rs_pub = new RobotStatePublisher(*armDriver, *handDriver, "joint_states", 50); // 关节状态发布器
+        rs_pub = new RobotStatePublisher(*armDriver, *handDriver, "joint_states", 500); // 机器人状态发布器
         // 关节状态发布定时器
         rs_pub->start();
     } else {
-        js_pub = new JointStatePublisher(*armDriver, "joint_states", 50); // 关节状态发布器
+        js_pub = new JointStatePublisher(*armDriver, "joint_states", 500); // 关节状态发布器
         // 关节状态发布定时器
         js_pub->start();
     }
@@ -54,23 +54,20 @@ int main(int argc, char*argv[]) {
     ros::AsyncSpinner spinner(1);
     spinner.start();
 
-    ros::Rate loop_rate(100); // 100HZ
-
     uint32_t cnt_ = 0;
     while(ros::ok())
     {
-//        printf("%d\n", cnt_++); // 运行速度测试
+//        printf("%d\n", cnt_++); // 运行速度测试, 能达到250HZ
 
         // 读取关节驱动器中关节位置
         armDriver->do_read_operation();
         // 读当前关节位置, 并写目标位置(轨迹)
         traj_follower->spinOnce();
         // 目标位置发送给关节驱动器
-        armDriver->do_write_operation(); // FIXME:读取非连续区域耗时较长, 无法达到100HZ, 实际60HZ左右
+        armDriver->do_write_operation();
         // 更新轨迹执行状态
         action_server_arm->spinOnce();
 
-        loop_rate.sleep();
         ros::spinOnce();
     }
 

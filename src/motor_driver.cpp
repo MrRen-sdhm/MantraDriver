@@ -11,23 +11,50 @@ MotorDriver::MotorDriver(string ip, const int port, int slaver, const string& jo
     m_master_ = new ModbusAdapter();
     m_master_->modbusConnectTCP(std::move(ip), port);
 
-    // 读取所有控制器寄存器, 并存入MantraDevice Register
-    if (!m_master_->modbusReadHoldReg(slaver_, hmi_addr_head_, ctrller_reg_len_, (uint16_t *) device_.memory())) {
-        throw runtime_error("\033[1;31mFail to read all register from controller!\033[0m\n");
+    while (true) { // 循环等待控制器初始化
+        if (!init_ready_flag_) { // 判断是否初始化完毕
+
+            // 读取所有控制器寄存器, 并存入MantraDevice Register
+            if (!m_master_->modbusReadHoldReg(slaver_, hmi_addr_head_, ctrller_reg_len_, (uint16_t *) device_.memory())) {
+                throw runtime_error("\033[1;31mFail to read all register from controller!\033[0m\n");
+            }
+
+            if (init_ready_flag_) { // 控制器已初始化完毕
+                sleep(1); // 休眠1s以确保控制器初始化完毕
+                // 判断当前位置寄存器与目标位置寄存器是否相同
+                for (int id = 1; id <= motor_cnt_; id++) {
+                    // 启动时当前位置与目标位置差值过大, 说明: 1、控制器中目标位置存在错误, 须重启控制器 2、电机当前未使能, 导致各关节角度偏差, 将误差阈值调大即可
+                    if (std::abs(device_.get_goal_position(id) - device_.get_curr_position(id)) > 0.005) {
+                        printf("[WARN] Id[%d] goal_position=%f curr_position=%f\n", id, device_.get_goal_position(id), device_.get_curr_position(id));
+                        throw runtime_error("\033[1;31mGoal positions is not equal to current positions!\nPlease restart the controller!\033[0m\n");
+                    }
+                }
+
+                // 判断零位寄存器是否有值, 无值便发出警告, 须设置零位
+                if (std::abs(std::accumulate(zero_pos.begin(), zero_pos.end(), 0.0l)) < 0.001) {
+                    ROS_ERROR("Zero position registers are empty now, please set the zero positions through hmi!");
+                }
+            }
+
+            if (device_.registers.ctrller_status == 1) {
+                init_ready_flag_ = true;
+                break;
+            } else {
+                printf("[INFO] Controller is initializing...\n"); // 控制器初始化完毕
+            }
+        }
     }
+
     // 读取位运算寄存器, 调试用
-    if (!m_master_->modbusReadHoldReg(slaver_, hmi_bit_addr_head_, bit_reg_len_, (uint16_t *) device_.bit_memory())) {
-        throw runtime_error("\033[1;31mFail to read bit register from controller!\033[0m\n");
-    }
+//    if (!m_master_->modbusReadHoldReg(slaver_, hmi_bit_addr_head_, bit_reg_len_, (uint16_t *) device_.bit_memory())) {
+//        throw runtime_error("\033[1;31mFail to read bit register from controller!\033[0m\n");
+//    }
 
     // 关节名称
     for (int id = 1; id <= motor_cnt_; id++) {
         joint_names_.push_back(joint_prefix + to_string(id)); // 初始化关节名称
         zero_pos[id-1] = device_.get_zero_position(id); // 获取零点位置
     }
-
-//    enable_all_power(); // 使能所有关节
-//    disable_all_power();
 
     sub_hmi_ = nh_.subscribe("mantra_hmi", 1, &MotorDriver::hmi_callback, this); // 订阅上位机消息
 }
@@ -61,13 +88,17 @@ bool MotorDriver::do_write_operation() {
         power_ctrl_flag_ = false;
     }
 
-    // 写关节位置
-    for (int id = 1; id <= motor_cnt_; id++) {
-        int offset = MantraDevice::offset_goal_position(id); // 控制器寄存器位置偏移
-        // 从Mantra寄存器获取目标关节角, 写入控制器寄存器, 在控制器寄存器中长度为2单字, 占两个数据位, 即2*uint16_t
-        int ret = _write_data(hmi_addr_head_ + offset, 2, (uint16_t *)device_.goal_pos_ptr(id)); // 写目标位置到控制器
-        if (!ret) return false;
-    }
+//    // 写关节位置
+//    for (int id = 1; id <= motor_cnt_; id++) {
+//        int offset = MantraDevice::offset_goal_position(id); // 控制器寄存器位置偏移
+//        // 从Mantra寄存器获取目标关节角, 写入控制器寄存器, 在控制器寄存器中长度为2单字, 占两个数据位, 即2*uint16_t
+//        int ret = _write_data(hmi_addr_write_head_ + offset, 2, (uint16_t *)device_.goal_pos_ptr(id)); // 写目标位置到控制器
+//        if (!ret) return false;
+//    }
+
+    /// 一次性写入连续可写寄存器, 更省时
+    int ret = _write_data(hmi_addr_write_head_, write_reg_len_, (uint16_t *) device_.write_memory());
+    if (!ret) return false;
 
     do_write_flag_ = false;
     return true;
@@ -77,8 +108,9 @@ bool MotorDriver::do_write_operation() {
 bool MotorDriver::do_read_operation() {
     do_read_flag_ = true;
     /// 必须读取的寄存器：当前位置、速度、力矩、零点位置
-    /// 一次性读取连续寄存器更省时
-    m_master_->modbusReadHoldReg(slaver_, hmi_addr_head_, ctrller_reg_len_, (uint16_t *) device_.memory());
+    /// 一次性读取连续可读寄存器, 更省时
+    m_master_->modbusReadHoldReg(slaver_, hmi_addr_read_head_, read_reg_len_, (uint16_t *) device_.read_memory());
+//    m_master_->modbusReadHoldReg(slaver_, hmi_addr_head_, ctrller_reg_len_, (uint16_t *) device_.memory());
 
     // 获取当前关节位置
     for (int id = 1; id <= motor_cnt_; id++) {
@@ -90,23 +122,7 @@ bool MotorDriver::do_read_operation() {
         zero_pos[id-1] = device_.get_zero_position(id);
     }
 
-    if (!init_ready_flag_) { // 判断是否初始化完毕
-        device_.registers.contrller_status == 1 ? // 控制器初始化完毕
-            (init_ready_flag_ = true) : printf("[INFO] Controller is initializing...\n");
-        if (init_ready_flag_) { // 驱动器已初始化完毕
-            // 判断当前位置寄存器与目标位置寄存器是否相同
-            for (int id = 1; id <= motor_cnt_; id++) {
-                // 当前位置与目标位置差值过大, 说明控制器中目标位置存在错误, 须重启控制器
-                if (std::abs(device_.get_goal_position(id) - device_.get_curr_position(id)) > 0.001) {
-                    throw runtime_error("\033[1;31mGoal positions is not equal to current positions!\nPlease restart the controller!\033[0m\n");
-                }
-            }
-            // 判断零位寄存器是否有值, 无值便发出警告, 须设置零位
-            if (std::abs(std::accumulate(zero_pos.begin(), zero_pos.end(), 0.0f)) < 0.001) {
-                ROS_ERROR("Zero position registers are empty now, please set the zero positions through hmi!");
-            }
-        }
-    }
+    if (show_info_) print_position(5); // 5s打印一次
 
     // 读关节位置
 //    for (int id = 1; id <= motor_cnt_; id++) {
@@ -134,8 +150,6 @@ bool MotorDriver::do_read_operation() {
 //        _read_data(hmi_addr_head_ + offset, 1, (uint16_t *)device_.curr_eff_ptr(id));
 //        curr_eff[id-1] = device_.get_curr_effort(id); // 当前位置保存到位置缓冲区
 //    }
-
-    if (show_info_) print_position(1); // 1s打印一次
 
     do_read_flag_ = false;
     return true;
