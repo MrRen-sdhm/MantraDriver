@@ -26,9 +26,9 @@ struct JointTolerance {
 template <size_t joint_count>
 struct TrajectoryPoint {
     std::array<double, joint_count> positions;
-    //        std::array<float, joint_count> velocities;
-    //        std::array<float, joint_count> accelerations;
-    //        std::array<float, joint_count> effort;
+    std::array<double, joint_count> velocities;
+    std::array<double, joint_count> accelerations;
+    //        std::array<double, joint_count> effort;
     uint64_t time_nsec; // 相对于轨迹跟踪开始的时间偏移
 };
 
@@ -100,6 +100,12 @@ public:
             for (int j = 0; j < joint_count; j++) {
                 double pos = p.positions[j];
                 traj.points[i].positions[j] = pos;
+
+                double vel = p.velocities[j];
+                traj.points[i].velocities[j] = vel;
+
+                double acc = p.accelerations[j];
+                traj.points[i].accelerations[j] = acc;
             }
         }
         traj.points_length = goal->trajectory.points.size();

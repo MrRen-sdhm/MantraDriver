@@ -12,6 +12,7 @@
 #include <string>
 #include <thread>
 #include <vector>
+#include <fstream>
 
 #include <actionlib/server/action_server.h>
 #include <actionlib/server/server_goal_handle.h>
@@ -19,6 +20,7 @@
 
 #include "motor_driver.h"
 #include "trajectory.h"
+#include "interpolation.h"
 
 using namespace ros;
 using namespace std::chrono;
@@ -36,6 +38,11 @@ public:
                         motorDriver_(motorDriver), path_tolerance_(path_tolerance), goal_tolerance_(goal_tolerance) {
         path_tolerance_ = path_tolerance_ * float(M_PI) / 180;
         goal_tolerance_ = goal_tolerance_ * float(M_PI) / 180;
+//        outfile.open("/home/sdhm/traj.csv");  // FIXME 调试用
+    }
+
+    ~TrajectoryFollower() {
+//        outfile.close();  // FIXME 调试用
     }
 
     MotorDriver& motorDriver_;
@@ -56,6 +63,13 @@ public:
         STARTING,   // 准备启动
         WORKING,    // 正在跟踪
     };
+
+    // 插值器
+    LinearInterpolation linear_interpolation;
+    ParabolicInterpolation parabolic_interpolation;
+    CubicInterpolation cubic_interpolation;
+    Polynomial5Interpolation polynomial5_interpolation;
+    ofstream outfile; // 用于保存轨迹
 
     /* 以下变量同时在中断和主函数中使用 */
     volatile State state_ = State::STARTING; // 当前工作状态
@@ -102,23 +116,25 @@ public:
 
     // 对比actual与desired, 计算误差error_point_
     void compute_error(const TrajectoryPoint <joint_count_> &desired, const TrajectoryPoint <joint_count_> &actual,
-                        TrajectoryPoint <joint_count_> &) {
+                        TrajectoryPoint <joint_count_> &, bool show_info) {
         for (int i = 0; i < joint_count_; i++) {
             float error = desired.positions[i] - actual.positions[i];
             error_point_.positions[i] = error;
         }
         error_point_.time_nsec = std::max(desired.time_nsec, actual.time_nsec);
 
-        // 获取零位关节角度
-        cout << endl << "position_error    [ ";
-        for (int i = 1; i <= joint_count_; i++) {
-            printf("%0.5f ", error_point_.positions[i-1]);
+        if (show_info) {
+            // 获取零位关节角度
+            cout << endl << "position_error    [ ";
+            for (int i = 1; i <= joint_count_; i++) {
+                printf("%0.5f ", error_point_.positions[i - 1]);
+            }
+            cout << "] rad [ ";
+            for (int i = 1; i <= joint_count_; i++) {
+                printf("%0.5f ", R2D(error_point_.positions[i - 1]));
+            }
+            cout << "] deg" << endl;
         }
-        cout << "] rad [ ";
-        for (int i = 1; i <= joint_count_; i++) {
-            printf("%0.5f ", R2D(error_point_.positions[i-1]));
-        }
-        cout << "] deg" << endl;
     }
 
     // 检查误差是否在容许范围内
@@ -137,20 +153,20 @@ public:
     }
 
     // 检查位置与时间容差, 若超出容差则中止执行, 若达到目标则完成执行
-    bool check_tolerance() {
+    bool check_tolerance(bool show_info) {
         TimePoint now = Clock::now();
         // 计算误差
-        compute_error(desired_point_, actual_point_, error_point_);
+        compute_error(desired_point_, actual_point_, error_point_, show_info);
 
         if (next_point_index_ < current_trajectory_.points_length) { // 正在跟踪轨迹点
-            printf("\033[1;34m[TRAJ] Follow the trajectory points now.\033[0m\n");
+            if(show_info) printf("\033[1;34m[TRAJ] Follow the trajectory points now.\033[0m\n");
             if (next_point_index_ > 1) { // 不判断起始点
                 if (!is_error_in_tolerance(error_point_, path_tolerance_, true)) { // 关节位置误差超过轨迹跟踪容许范围!, 结束执行
                     desired_point_ = actual_point_;
                     desired_point_.time_nsec = 0;
                     // 取消轨迹跟踪
                     cancel();
-                    printf("\033[1;32m[WARN] Maybe you should reduce the speed or turn up the tolerance!\033[0m\n");
+                    printf("\033[1;32m[WARN] Maybe you should reduce the aim_speed or turn up the tolerance!\033[0m\n");
                     printf("\033[1;34m[TRAJ] PATH_TOLERANCE_VIOLATED.\033[0m\n");
                     path_tolerance_violated = true;
 
@@ -179,15 +195,15 @@ public:
         return true;
     }
 
-    void spinOnce() {
+    void spinOnce(bool show_info) {
         // 读当前关节位置
-        on_read_pos();
+        on_read_pos(show_info);
         // 写目标关节位置
-        on_sync_write();
+        on_sync_write(show_info);
     }
 
     // 主循环中写入新位置到虚拟驱动器
-    void on_sync_write() {
+    void on_sync_write(bool show_info) {
         if (runing_) {
             uint64_t duration;
             TimePoint now = Clock::now();
@@ -218,9 +234,24 @@ public:
                     } else if (next_point_index_ < current_trajectory_.points_length) {
                         // 中间状态, 计算插值点
                         desired_point_.time_nsec = duration;
-                        // 线性插值
+
+//                        linear_interpolation.getPosition(current_trajectory_.points[next_point_index_ - 1],
+//                                                            current_trajectory_.points[next_point_index_], desired_point_);
+
+//                        parabolic_interpolation.getPosition(current_trajectory_.points[next_point_index_ - 1],
+//                                                              current_trajectory_.points[next_point_index_], desired_point_);
+
+//                        cubic_interpolation.getPosition(current_trajectory_.points[next_point_index_ - 1],
+//                                                              current_trajectory_.points[next_point_index_], desired_point_);
+
+//                        polynomial5_interpolation.getPosition(current_trajectory_.points[next_point_index_ - 1],
+//                                                              current_trajectory_.points[next_point_index_], desired_point_);
+
+                        // 线性插值，旧版
                         linear_interpolate(current_trajectory_.points[next_point_index_ - 1],
-                                               current_trajectory_.points[next_point_index_], desired_point_);
+                                           current_trajectory_.points[next_point_index_], desired_point_);
+//
+
                         // 设定电机状态
                         set_motor_positions(desired_point_.positions);
                     } else {
@@ -232,13 +263,16 @@ public:
                         last_point_flag_ = true;
                     }
 
+                    // 保存末端关节的实际位置及目标位置
+//                    outfile << duration / 1e9 << "," << actual_point_.positions[6] << "," << desired_point_.positions[6] << endl;  // FIXME 调试用
+
                     // 打印插补后的轨迹
 //                    printf("[Traj] servoj[%lu]([%f,%f,%f,%f,%f,%f,%f])\n", next_point_index_, desired_point_.positions[0],
 //                             desired_point_.positions[1], desired_point_.positions[2], desired_point_.positions[3],
 //                             desired_point_.positions[4], desired_point_.positions[5], desired_point_.positions[6]);
 
                     // 打印状态
-                    if (Time::now().toSec() - last_print_time_ > 0) { // 间隔打印, 设为0即一直打印
+                    if (Time::now().toSec() - last_print_time_ > 0  && show_info) { // 间隔打印, 设为0即一直打印
                         last_print_time_ = Time::now().toSec();
                         auto &p = desired_point_;
                         printf("\033[1;36m[TRAJ]\033[0m %zu/%zu %.3fsec [", next_point_index_,
@@ -257,16 +291,16 @@ public:
     }
 
     // 当读取到新位置时的回调
-    void on_read_pos() {
+    void on_read_pos(bool show_info) {
         if (runing_) {
-            motorDriver_.print_position(0); // 持续打印关节位置信息
+            if(show_info) motorDriver_.print_position(0); // 持续打印关节位置信息
             // 将电机位置反馈记录到actual_point_
             actual_point_.time_nsec = Time::now().nsec;
             actual_point_.positions = motorDriver_.curr_pos;
 
             // 位置及时间容差检查
             if (write_once_) { // 读取当前位置后, 进行轨迹容差检查, 需在已写入一次目标位置后执行
-                if (check_tolerance()) { // 在误差容许范围内
+                if (check_tolerance(show_info)) { // 在误差容许范围内
                     if (last_point_flag_) { // 是最后一个轨迹点
                         last_point_flag_ = false;
 

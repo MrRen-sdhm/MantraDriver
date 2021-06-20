@@ -57,7 +57,7 @@ typedef enum {
 } msg_type_t;
 
 /* This structure reduces the number of params in functions and so
- * optimizes the speed of execution (~ 37%). */
+ * optimizes the aim_speed of execution (~ 37%). */
 typedef struct _sft {
     int slave;
     int function;
